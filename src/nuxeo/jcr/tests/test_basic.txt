@@ -1,0 +1,224 @@
+.. -*- Mode: doctest -*-
+.. $Id$
+
+Basic tests
+===========
+
+We create a JCR database, except that we want one that connects to a
+fake JCR repository::
+
+    >>> import os.path
+    >>> from nuxeo.jcr.db import DB
+    >>> nodetypedefs = file(os.path.join(testdir, 'test_basic.cnd')).read()
+    >>> class FakeDB(DB):
+    ...     server = None
+    ...     _nodetypedefs = nodetypedefs # Read by FakeJCRController
+    >>> controller_class_name = 'nuxeo.jcr.tests.fakeserver.FakeJCRController'
+    >>> db = FakeDB(controller_class_name=controller_class_name)
+
+Then we open the database to get a connection::
+
+    >>> from transaction import TransactionManager
+    >>> tm = TransactionManager()
+    >>> conn = db.open(transaction_manager=tm)
+    >>> root_uuid = conn.root_uuid
+    >>> root_uuid
+    'cafe-babe'
+
+Let's see what types and schemas are available::
+
+    >>> sorted(conn.getSchemaManager().getSchemas().keys())
+    ... #doctest: +NORMALIZE_WHITESPACE
+    ['cps:tripreport',
+     'cpsnt:children',
+     'cpss:dublincore', 'cpss:tripreport',
+     'cpst:name']
+    >>> sorted(conn.getTypeManager().getTypes().keys())
+    ['cps:tripreport']
+
+We'll add an object in the fake JCR through a back-channel::
+
+    >>> jcr = conn.controller
+    >>> jcr._addChild(root_uuid, '000-000', 'cps:children', 'cpsnt:children',
+    ...               [], {})
+    >>> jcr._addChild('000-000', '001-000', 'atrip', 'cps:tripreport',
+    ...               [], {'title': u"my trip"})
+    >>> jcr._addChild('001-000', '001-010', 'name', 'cpst:name',
+    ...               [], {'first': u"Jack", 'last': u"Bauer"})
+    >>> jcr._addChild('001-000', '001-021', 'friends', 'cpst:name',
+    ...               [], {'first': u"Chloe", 'last': u"O'Brian"})
+    >>> jcr._addChild('001-000', '001-022', 'friends', 'cpst:name',
+    ...               [], {'first': u"David", 'last': u"Palmer"})
+
+Then ask the connection for the root::
+
+    >>> root = conn.get(root_uuid)
+    >>> root
+    <Document at />
+    >>> root._p_oid is root_uuid
+    True
+
+There is a child 'atrip', which is a ghost initially::
+
+    >>> trip = root['atrip']
+    >>> trip._p_changed is None
+    True
+    >>> trip
+    <Document at /cps:children/atrip>
+    >>> trip._p_changed
+    False
+    >>> trip._p_oid
+    '001-000'
+
+The document has a property 'title'::
+
+    >>> trip.getProperty('title')
+    u'my trip'
+
+There's a complex property 'name'::
+
+    >>> name = trip.getProperty('name')
+    >>> name
+    <ObjectProperty name of <Document at /cps:children/atrip>>
+    >>> sorted(name.getProperties().items())
+    ... #doctest: +NORMALIZE_WHITESPACE
+    [('first', u'Jack'), ('jcr:primaryType', 'cpst:name'),
+     ('last', u'Bauer')]
+
+There is also a list property of friends::
+
+    >>> friends = trip.getProperty('friends')
+    >>> friends
+    <ListProperty friends of <Document at /cps:children/atrip>>
+    >>> len(friends)
+    2
+    >>> list(friends)
+    ... #doctest: +NORMALIZE_WHITESPACE
+    [<ObjectProperty friends of <Document at /cps:children/atrip>>,
+     <ObjectProperty friends of <Document at /cps:children/atrip>>]
+    >>> sorted(friends[0].getProperties().items())
+    ... #doctest: +NORMALIZE_WHITESPACE
+    [('first', u'Chloe'), ('jcr:primaryType', 'cpst:name'),
+     ('last', u"O'Brian")]
+    >>> sorted(friends[1].getProperties().items())
+    ... #doctest: +NORMALIZE_WHITESPACE
+    [('first', u'David'), ('jcr:primaryType', 'cpst:name'),
+     ('last', u'Palmer')]
+
+We'll check that everything gets reloaded correctly from the storage if
+the persistent objects are ghostified (by the pickle cache being
+reduced, or by direct invalidation).
+
+The document itself::
+
+    >>> trip._p_deactivate()
+    >>> trip._p_activate()
+
+An object property::
+
+    >>> name._p_deactivate()
+    >>> name._p_activate()
+
+A list property::
+
+    >>> friends._p_deactivate()
+    >>> friends._p_activate()
+
+An object property inside a list::
+
+    >>> friends[0]._p_deactivate()
+    >>> friends[0]._p_activate()
+
+The "children" special node::
+
+    >>> root._children._p_deactivate()
+    >>> root._children._p_activate()
+
+Modification
+------------
+
+Let's modify a simple property in the document. The first modification
+will trigger a registration with the current transaction::
+
+    >>> txn = tm.begin()
+    >>> conn._needs_to_join, len(txn._resources)
+    (True, 0)
+
+    >>> trip._p_changed
+    False
+    >>> trip.setProperty('title', u"Super Trip")
+    >>> trip._p_changed
+    True
+
+    >>> conn._needs_to_join, len(txn._resources)
+    (False, 1)
+
+If we abort now, the modified object is reghostified::
+
+    >>> tm.abort()
+    >>> trip._p_changed is None
+    True
+    >>> trip.getProperty('title')
+    u'my trip'
+
+But let's really do the change and commit the modification::
+
+    >>> txn = tm.begin()
+    >>> trip.setProperty('title', u"My Super Trip")
+    >>> trip._p_changed
+    True
+    >>> tm.commit()
+    >>> trip._p_changed
+    False
+    >>> trip.getProperty('title')
+    u'My Super Trip'
+
+The property is still there, even if we deactivate the object::
+
+    >>> trip._p_deactivate()
+    >>> trip.getProperty('title')
+    u'My Super Trip'
+
+Let's do this with a property that didn't exist before::
+
+    >>> txn = tm.begin()
+    >>> trip.setProperty('description', u"To be done")
+    >>> tm.commit()
+    >>> trip.getProperty('description')
+    u'To be done'
+    >>> trip._p_deactivate()
+    >>> trip.getProperty('description')
+    u'To be done'
+
+The same happens if we change a complex property::
+
+    >>> txn = tm.begin()
+    >>> name = trip.getProperty('name')
+    >>> sorted(name.getProperties().items())
+    ... #doctest: +NORMALIZE_WHITESPACE
+    [('first', u'Jack'), ('jcr:primaryType', 'cpst:name'),
+     ('last', u'Bauer')]
+    >>> name.setProperty('last', u"Shephard")
+    >>> tm.commit()
+    >>> name.getProperty('last')
+    u'Shephard'
+    >>> trip.getProperty('name') is name
+    True
+    >>> sorted(name.getProperties().items())
+    ... #doctest: +NORMALIZE_WHITESPACE
+    [('first', u'Jack'), ('jcr:primaryType', 'cpst:name'),
+     ('last', u'Shephard')]
+
+Adding complex properties
+-------------------------
+
+Now let's add a complex property::
+
+    >>> txn = tm.begin()
+    >>> mother = trip.addProperty('mother')
+    >>> mother
+    <ObjectProperty mother of <Document at /cps:children/atrip>>
+    >>> sorted(mother.getProperties().items())
+    ... #doctest: +NORMALIZE_WHITESPACE
+    [('first', u'Jack'), ('jcr:primaryType', 'cpst:name'),
+     ('last', u'Bauer')]

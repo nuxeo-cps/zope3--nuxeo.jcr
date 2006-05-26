@@ -1,0 +1,211 @@
+.. -*- mode: doctest -*-
+
+Testing the CND reader
+======================
+
+
+Fragments
+---------
+
+    >>> import os.path
+    >>> from pprint import pprint
+    >>> from nuxeo.jcr.cnd import Parser
+
+Let's check we can parse supertypes fragments::
+
+    >>> s = Parser("> foo, bar someoption")
+    >>> s.getSuperTypes()
+    ['foo', 'bar']
+    >>> s.lexer.next()
+    LexerQName('someoption')
+
+    >>> s = Parser("blah")
+    >>> s.getSuperTypes()
+    []
+    >>> s.lexer.next()
+    LexerQName('blah')
+
+Parsing node type options::
+
+    >>> options = Parser('o m ord').getNodeTypeOptions()
+    >>> options == {'orderable': True, 'mixin': True}
+    True
+
+    >>> options = Parser('ORDERABLE').getNodeTypeOptions()
+    >>> options == {'orderable': True, 'mixin': False}
+    True
+
+Parsing strings::
+
+    >>> Parser("'foo', 'bar'").getStringList()
+    ['foo', 'bar']
+    >>> Parser("'foo'").getStringList()
+    ['foo']
+    >>> p = Parser("'foo' blah")
+    >>> p.getStringList()
+    ['foo']
+    >>> p.lexer.next()
+    LexerQName('blah')
+    >>> Parser("blah").getStringList()
+    Traceback (most recent call last):
+    ...
+    ValueError: LexerQName('blah')
+
+Parse properties:
+
+    >>> s = "foo (boolean) = 'gee', 'moo' primary multiple < 'blah'"
+    >>> p = Parser(s)
+    >>> prop = p.getProperty()
+    >>> pprint(prop)
+    {'constraints': ['blah'],
+     'default_values': ['gee', 'moo'],
+     'name': 'foo',
+     'options': {'autocreated': False,
+                 'mandatory': False,
+                 'multiple': True,
+                 'primary': True,
+                 'protected': False,
+                 'version': 'copy'},
+     'type_name': 'boolean'}
+    >>> p.lexer.next() is None
+    True
+
+Parse nodes::
+
+    >>> p = Parser("foo (typea, typeb) = gee a m * protected ignore")
+    >>> prop = p.getNode()
+    >>> pprint(prop)
+    {'default_type': 'gee',
+     'name': 'foo',
+     'options': {'autocreated': True,
+                 'mandatory': True,
+                 'multiple': True,
+                 'primary': False,
+                 'protected': True,
+                 'version': 'ignore'},
+     'required_types': ['typea', 'typeb']}
+    >>> p.lexer.next() is None
+    True
+
+
+Parsing
+-------
+
+We have a file containing complex CND definitions that we can parse::
+
+    >>> f = file(os.path.join(testdir, 'example1.cnd'))
+    >>> p = Parser(f)
+    >>> ns, data = p.getData()
+    >>> sorted(data.keys()) # doctest:+NORMALIZE_WHITESPACE
+    ['authorType', 'authorsType', 'bookType', 'characterType',
+     'charactersType', 'ex:NodeType', 'folder', 'jcr:Xmltext', 'libraryType',
+     'object', 'orderedfolder', 'person', 'titleType', 'xs:anyType']
+    >>> sorted(ns.items())
+    [('ex', 'http://example.org/jackrabbit/example')]
+
+
+We can also parse JackRabbit's default types::
+
+    >>> f = file(os.path.join(testdir, 'jackrabbit.cnd'))
+    >>> p = Parser(f)
+    >>> ns, data = p.getData()
+    >>> pprint(sorted(ns.items()))
+    [('jcr', 'http://www.jcp.org/jcr/1.0'),
+     ('mix', 'http://www.jcp.org/jcr/mix/1.0'),
+     ('nt', 'http://www.jcp.org/jcr/nt/1.0'),
+     ('rep', 'internal')]
+
+Building schemas
+----------------
+
+Now from the parsed data we build actual Zope 3 schemas.
+
+Some things we disallow::
+
+    >>> p = Parser("[foo] - *")
+    >>> ns, data = p.getData()
+    >>> p.buildSchemas(data)
+    Traceback (most recent call last):
+      ...
+    ValueError: * properties are disallowed for [foo]
+
+    >>> p = Parser("[foo] + * mul")
+    >>> ns, data = p.getData()
+    >>> p.buildSchemas(data)
+    Traceback (most recent call last):
+      ...
+    ValueError: Multiple * child nodes are disallowed for [foo]
+
+    >>> p = Parser("[foo] + bar (x, y)")
+    >>> ns, data = p.getData()
+    >>> p.buildSchemas(data)
+    Traceback (most recent call last):
+      ...
+    ValueError: Can't have more than one required type for [foo] + bar
+
+Inheritance of types is taken into account::
+
+    >>> s = "[foo] > bar - at1  [bar] - at2"
+    >>> p = Parser(s)
+    >>> ns, data = p.getData()
+    >>> ifaces = p.buildSchemas(data)
+    >>> IFoo, IBar = ifaces['foo'], ifaces['bar']
+    >>> IFoo.isOrExtends(IBar)
+    True
+
+An inheritance loop produces an error::
+
+    >>> s = "[foo] > bar - at1  [bar] > foo - at2"
+    >>> p = Parser(s)
+    >>> ns, data = p.getData()
+    >>> ifaces = p.buildSchemas(data)
+    Traceback (most recent call last):
+      ...
+    ValueError: Loop involving 'bar', 'foo' in type inheritance
+
+
+Let's test with a realistic CND schema::
+
+    >>> f = file(os.path.join(testdir, 'example2.cnd'))
+    >>> p = Parser(f)
+    >>> ns, data = p.getData()
+    >>> sorted(data.keys())
+    ['Author', 'Book', 'Company', 'Document', 'Folder']
+    >>> ifaces = p.buildSchemas(data)
+
+Check that the interface for Folder has been done correctly, with base
+interface and precondition::
+
+    >>> from zope.app.container.interfaces import IContainer
+    >>> IFolder = ifaces['Folder']
+    >>> IDocument = ifaces['Document']
+    >>> IFolder.isOrExtends(IContainer)
+    True
+    >>> IFolder.isOrExtends(IDocument)
+    True
+    >>> precondition = IFolder['__setitem__'].getTaggedValue('precondition')
+    >>> [t.__name__ for t in precondition.types]
+    ['IFolder', 'IDocument']
+
+Check that complex types have been converted correctly::
+
+    >>> from zope.schema.interfaces import IText
+    >>> from zope.schema.interfaces import IList
+    >>> from zope.schema.interfaces import IObject
+    >>> IAuthor = ifaces['Author']
+    >>> IText.providedBy(IFolder['foo'])
+    True
+    >>> IList.providedBy(IFolder['bar'])
+    True
+    >>> IText.providedBy(IFolder['bar'].value_type)
+    True
+    >>> IObject.providedBy(IFolder['who'])
+    True
+    >>> IFolder['who'].schema is IAuthor
+    True
+    >>> IList.providedBy(IFolder['contributors'])
+    True
+    >>> IObject.providedBy(IFolder['contributors'].value_type)
+    True
+    >>> IFolder['contributors'].value_type.schema is IAuthor
+    True

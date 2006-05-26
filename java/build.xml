@@ -1,0 +1,45 @@
+<?xml version="1.0"?>
+
+<project name="JCRIceConnector" default="all" basedir=".">
+  <property file="build.properties" />
+  <property name="class.dir" value="classes" />
+  <property name="generated.dir" value="generated" />
+  <property name="lib.dir" value="lib" />
+  <property name="src.dir" value="src/org/nuxeo/jcrconnector" />
+
+  <!-- Ice classpath -->
+  <path id="ice.classpath">
+    <fileset dir="${lib.dir}">
+      <include name="*.jar" />
+    </fileset>
+  </path>
+
+  <target name="generate">
+    <taskdef name="slice2java" classpath="${icej.home}/ant" classname="Slice2JavaTask" />
+
+    <!-- Create the output directory for generated code -->
+    <mkdir dir="${generated.dir}" />
+    <slice2java outputdir="${generated.dir}">
+      <fileset dir="." includes="jcr.ice" />
+    </slice2java>
+  </target>
+
+  <target name="compile" depends="generate">
+    <mkdir dir="${class.dir}" />
+    <javac debug="true" srcdir="${generated.dir}" destdir="${class.dir}">
+      <classpath refid="ice.classpath" />
+    </javac>
+    <javac debug="true" srcdir="${src.dir}" destdir="${class.dir}" excludes="generated/**">
+      <classpath refid="ice.classpath" />
+    </javac>
+  </target>
+
+  <target name="all" depends="compile" />
+
+  <target name="clean">
+    <delete dir="${generated.dir}" />
+    <delete dir="${class.dir}" />
+  </target>
+
+</project>
+

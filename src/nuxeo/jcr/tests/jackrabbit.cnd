@@ -1,0 +1,148 @@
+# These are the default jackrabbit node types
+
+<rep='internal'>
+<nt='http://www.jcp.org/jcr/nt/1.0'>
+<mix='http://www.jcp.org/jcr/mix/1.0'>
+<jcr='http://www.jcp.org/jcr/1.0'>
+
+# Mixins
+
+[mix:referenceable]
+  mixin
+  - jcr:uuid (string) mandatory autocreated protected initialize
+
+[mix:lockable]
+  mixin
+  - jcr:lockIsDeep (boolean) protected ignore
+  - jcr:lockOwner (string) protected ignore
+
+[mix:versionable] > mix:referenceable
+  mixin
+  - jcr:mergeFailed (reference) protected multiple abort
+  - jcr:predecessors (reference) mandatory protected multiple
+    < 'nt:version'
+  - jcr:isCheckedOut (boolean) = 'true' mandatory autocreated protected ignore
+  - jcr:baseVersion (reference) mandatory protected ignore
+    < 'nt:version'
+  - jcr:versionHistory (reference) mandatory protected
+    < 'nt:versionHistory'
+
+
+# Nodetypes
+
+[nt:base]
+  - jcr:mixinTypes (name) protected multiple compute
+  - jcr:primaryType (name) mandatory autocreated protected compute
+
+[nt:hierarchyNode]
+  - jcr:created (date) mandatory autocreated protected initialize
+
+[nt:file] > nt:hierarchyNode
+  + jcr:content (nt:base) primary mandatory
+
+[nt:linkedFile] > nt:hierarchyNode
+  - jcr:content (reference) primary mandatory
+
+[nt:folder] > nt:hierarchyNode
+  + * (nt:hierarchyNode) version
+
+[nt:versionedChild]
+  - jcr:childVersionHistory (reference) mandatory autocreated protected abort
+    < 'nt:versionHistory'
+
+[nt:versionLabels]
+  - * (reference) protected abort
+    < 'nt:version'
+
+[nt:childNodeDefinition]
+  - jcr:sameNameSiblings (boolean) mandatory
+  - jcr:defaultPrimaryType (name)
+  - jcr:requiredPrimaryTypes (name) = 'nt:base' mandatory multiple
+  - jcr:protected (boolean) mandatory
+  - jcr:onParentVersion (string) mandatory
+    < 'COPY', 'VERSION', 'INITIALIZE', 'COMPUTE', 'IGNORE', 'ABORT'
+  - jcr:mandatory (boolean) mandatory
+  - jcr:autoCreated (boolean) mandatory
+  - jcr:name (name)
+
+[nt:resource] > mix:referenceable
+  - jcr:lastModified (date) mandatory ignore
+  - jcr:data (binary) primary mandatory
+  - jcr:mimeType (string) mandatory
+  - jcr:encoding (string)
+
+[nt:versionHistory] > mix:referenceable
+  - jcr:versionableUuid (string) mandatory autocreated protected abort
+  + * (nt:version) = nt:version protected abort
+  + jcr:versionLabels (nt:versionLabels) = nt:versionLabels mandatory autocreated protected abort
+  + jcr:rootVersion (nt:version) = nt:version mandatory autocreated protected abort
+
+[nt:version] > mix:referenceable
+  - jcr:successors (reference) protected multiple abort
+    < 'nt:version'
+  - jcr:predecessors (reference) protected multiple abort
+    < 'nt:version'
+  - jcr:created (date) mandatory autocreated protected abort
+  + jcr:frozenNode (nt:frozenNode) protected abort
+
+[nt:propertyDefinition]
+  - jcr:multiple (boolean) mandatory
+  - jcr:defaultValues (undefined) multiple
+  - jcr:valueConstraints (string) multiple
+  - jcr:requiredType (string) mandatory
+    < 'STRING', 'BINARY', 'LONG', 'DOUBLE', 'BOOLEAN', 'DATE', 'NAME', 'PATH', 'REFERENCE', 'UNDEFINED'
+  - jcr:protected (boolean) mandatory
+  - jcr:onParentVersion (string) mandatory
+    < 'COPY', 'VERSION', 'INITIALIZE', 'COMPUTE', 'IGNORE', 'ABORT'
+  - jcr:mandatory (boolean) mandatory
+  - jcr:autoCreated (boolean) mandatory
+  - jcr:name (name)
+
+[nt:frozenNode] > mix:referenceable
+  orderable
+  - * (undefined) protected multiple abort
+  - * (undefined) protected abort
+  - jcr:frozenUuid (string) mandatory autocreated protected abort
+  - jcr:frozenMixinTypes (name) protected multiple abort
+  - jcr:frozenPrimaryType (name) mandatory autocreated protected abort
+  + * (nt:base) protected multiple abort
+
+[nt:unstructured]
+  orderable
+  - * (undefined)
+  - * (undefined) multiple
+  + * (nt:base) = nt:unstructured multiple version
+
+[nt:nodeType]
+  - jcr:primaryItemName (name)
+  - jcr:hasOrderableChildNodes (boolean) mandatory
+  - jcr:isMixin (boolean) mandatory
+  - jcr:supertypes (name) multiple
+  - jcr:nodeTypeName (name) mandatory
+  + jcr:childNodeDefinition (nt:childNodeDefinition) = nt:childNodeDefinition multiple version
+  + jcr:propertyDefinition (nt:propertyDefinition) = nt:propertyDefinition multiple version
+
+[nt:query]
+  - jcr:language (string)
+  - jcr:statement (string)
+
+
+# JackRabbit-specific
+
+[rep:system]
+  orderable
+  + * (nt:base) = nt:unstructured multiple ignore
+  + jcr:nodeTypes (rep:nodeTypes) = rep:nodeTypes mandatory protected abort
+  + jcr:versionStorage (rep:versionStorage) = rep:versionStorage mandatory protected abort
+
+[rep:root] > nt:unstructured
+  orderable
+  + jcr:system (rep:system) = rep:system mandatory ignore
+
+[rep:nodeTypes]
+  + * (nt:nodeType) = nt:nodeType protected abort
+
+[rep:versionStorage]
+  + * (rep:versionStorage) = rep:versionStorage protected multiple abort
+  + * (nt:versionHistory) = nt:versionHistory protected multiple abort
+

@@ -1,0 +1,244 @@
+====================================
+Document mapping between CPS and JCR
+====================================
+
+.. $Id$
+
+This is a description of how the CPS concepts are mapped to JCR
+concepts.
+
+Schemas and document types
+==========================
+
+The canonical schemas live in the JCR, and are defined through node
+types. Schemas are grouped together to form document types.
+
+We try to use standard naming for properties of standard schemas, for
+instance (see http://dublincore.org/documents/dc-xml-guidelines/)
+`dc:title`, `dc:description`.
+
+A CPS document type is mapped to a JCR primary node type, which itself
+inherits from all the mixin node types representing its schemas.
+
+Three "marker" node types are defined, to allow the implementation to
+map them differently in CPS:
+
+- `cpsnt:document` flags the node as a full document (there is also
+  `cpsnt:orderedfolder` and `cpsnt:folder` available). It only contains
+  definitions for basic CPS attributes. Document types themselves are
+  named `cps:sometype`.
+
+- `cpsnt:schema` represents a full schema. It has property definitions
+  for all simple fields of the schema, and node definitions for complex
+  fields. Schemas types themselves are named `cpss:someschema`.
+
+- `cpsnt:type` represents a complex type. Complex types themselves are
+  named `cpst:sometype`.
+
+These special node types allow the implementation to decide when to
+fetch serveral subnodes at the same time from the repository, and how to
+map them to python objects.
+
+The base node types can be defined as (in CND notation)::
+
+  # complex type base
+  [cpsnt:type] mixin
+
+  # basic complex type for dict
+  [cpst:stringlistdict] > cpsnt:type
+    - * (String) multiple
+
+  # basic file
+  [cpst:file] > nt:resource, mix:versionable
+
+
+  # schema base
+  [cpsnt:schema] mixin
+
+  # document
+  [cpsnt:document] > mix:versionable
+    + cps:localroles (cpst:stringlistdict)
+    + cps:permissions XXX
+
+  # non-orderable  folder
+  [cpsnt:folder] > cpsnt:document
+    + * (cpsnt:document)
+
+  # ordered folder
+  [cpsnt:orderedfolder] > cpsnt:folder
+    orderable
+
+
+An example configuration for a simple typical document type would be::
+
+  # a complex type for firstname+lastname
+  [cpst:name] > cpsnt:type
+    - firstname (String)
+    - lastname (String)
+
+  # the schema for the tripreport part
+  [cpss:tripreport] > cpsnt:schema
+    - duedate (Date)
+    - cities (String) multiple
+    + username (cpst:name)
+    + childrennames (cpst:name) multiple
+
+  # a full document type
+  [cps:tripreport] > cpsnt:document, cpss:tripreport, cpss:dublincore
+
+
+An abstract representation of the above is loaded in Zope from the JCR
+at Zope startup. This representation is actually Zope 3 schemas (which
+are interfaces) and is used to:
+
+- mark the various classes that implement each node type,
+
+- classify objects in the ZODB JCR connection to decide how to treat
+  them w.r.t. persistence, (XXX really?)
+
+- synthesize fake CPS schemas in portal_schemas (for backward compatibility),
+
+- synthesize fake CMF document types in portal_types (idem),
+
+- ...
+
+Documents
+=========
+
+An example python object holding a document could be::
+
+  Tripreport(
+      title = "My report for last year",
+      description = "This is my report of people I met.",
+      duedate = datetime(2006, 1, 1, 12, 0, 0),
+      cities = StringList("Paris", "London"),
+      username = Name(
+          firstname = "Jack",
+          lastname = "Bauer",
+          ),
+      childrennames = List(
+          Name(
+              firstname = "Christian",
+              lastname = "Troy",
+              ),
+          Name(
+              firstname = "Sean",
+              lastname = "McNamara",
+              ),
+          ),
+      __ac_local_roles__ = {
+          'jack': ['Manager', 'Owner'],
+          'chloe': ['Reader'],
+      },
+  )
+
+Here the classes TripReport and Name have been synthesized by the
+mapper. They inherit from Persistent and have logic to detect attribute
+change. List is a standard Capsule class that's also Persistent, used to
+map from same-name siblings in JCR.
+
+The JCR storage for this example document could be::
+
+  mytrip (cps:tripreport)
+    - dc:title = "My report for last year"
+    - dc:description = "This is my report of people I met."
+    - duedate = 2006-01-01T12:00:00
+    - cities = ["Paris", "London"]
+    + username (cpst:name)
+      - firstname = "Jack"
+      - lastname = "Bauer"
+    + childrennames (cpst:name) multiple
+      + 1
+        - firstname = "Christian"
+        - lastname = "Troy"
+      + 2
+        - firstname = "Sean"
+        - lastname = "McNamara"
+    + cps:localroles (cpst:stringlistdict)
+      - jack = ["Manager", "Owner"]
+      - chloe = ["Reader"]
+
+A CPS document is mapped to a node. Its `jcr:uuid` is a unique
+identifier for all versions of the document (this gives a UUID for
+documents in CPS, equivalent to the old docid).
+
+A CPS document's attributes are stored as properties, either
+single-valued properties for scalars, or multi-valued properties for
+scalar lists.
+
+Complex types are modeled using simple unordered node types.
+
+Sequences of complex types are modeled using a child node with same name
+siblings.
+
+Files and images properties, who need additional metadata (MIME type,
+encoding) are stored as a `cpsnt:file` node type, which itself holds,
+among others, a Binary property containing the file data.
+
+A document's dictionnary attributes (which may not be specified by the
+schema, for instance the __ac_local_roles__ dictionnary held in
+`cps:localroles`) is modeled using a subnode, with as many properties as
+there are keys in the dictionnary. (`cpst:stringlistdict` is predefined
+for that.)
+
+CPS properties (for instance the local roles and the permission) are in
+a specific namespace, `cps:`.
+
+Other properties of interest, whose name has to be decided:
+
+- cps local group roles (unify with local roles if possible),
+
+- zope permission map,
+
+- cmf workflow state,
+
+- ...
+
+XXX For security-related attributes, it would be good to see how other
+repositories like Day's CRX (see http://jcr.day.com) or Alfresco store
+them.
+
+Folders
+=======
+
+Two kinds of folders exist: ordered and unordered folders. They are used
+differently, and each has specific optimizations:
+
+- ordered folders are supposed to be small. When they are fetched from
+  the JCR, all children names and UUIDs are retrieved.
+
+- unordered folders are supposed to be big. Children are fetched lazily,
+  only when referenced.
+
+Folders are distinguished by the fact that their type inherits from
+`cpsnt:orderedfolder` or not.
+
+Workspaces
+==========
+
+The CPS workspaces are modeled directly using a single JCR workspace,
+with the documents as nodes. There is no "proxies" here.
+
+Sections
+========
+
+The CPS sections are modeled using another JCR workspace, holding a tree
+of nodes. Each node may either be a normal document like in a workspace,
+or a special "proxy" node.
+
+Normal documents are used for folders that don't need multi-publication.
+Proxies should only be used for leaf documents.
+
+A proxy node has a special node type, and a single property of type
+Reference pointing to the UUID of a `nt:version` in the version storage
+space. (XXX check that this works ok in Jackrabbit.) This therefore
+points to a precise version of a document.
+
+XXX How to deal with folderish documents...
+
+XXX Another option for the proxies would be to split the workpace in two
+parts, one part being a kind of "repository" holding all currently used
+nodes in checked-in state, the other part being the tree of proxy nodes
+with UUID pointing to the real document nodes (not a `nt:version`). This
+would provide more natural references, but would need additional work to
+manage the repository part and more storage space.

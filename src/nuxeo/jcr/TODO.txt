@@ -1,0 +1,21 @@
+====
+TODO
+====
+
+- the protocol must deal with writes
+
+- the protocol must deal with transactions
+
+- the jython server must deal with transactions using JOTM
+
+- the connection must be able to reconnect on network problem
+
+- the connection must deal with transactions (also in conjunction with
+  reconnects)
+
+Maybe later
+-----------
+
+- link with an external transaction manager (new server type?)
+
+- link with an external message bus (add a new server type)

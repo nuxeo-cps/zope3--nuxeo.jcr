@@ -1,0 +1,10 @@
+Developer doc
+=============
+
+Running the tests
+-----------------
+
+You can run the tests using::
+
+  PYTHONPATH=$ZOPE_HOME/lib/python ~/INSTANCE_HOME/test.py -v -m nuxeo.capsule
+

@@ -1,0 +1,42 @@
+# This is a schema with the maximum number of features
+
+[Book]
+  - title (string)
+  - coverPicture (binary)
+  - pages (long)
+  - weight (double)
+  - outOfPrint (boolean)
+  - copyrightDate (date)
+
+  - languages (string) multiple
+  - illustrations (binary) multiple
+  - chapterLength (long) multiple
+  - prices (double) multiple
+  - bits (boolean) multiple
+  - publicationDates (date) multiple
+
+  + publisher (Company)
+  + authors (Author) multiple
+
+[Company]
+  - name
+  - address
+
+[Author]
+  - firstname
+  - lastname
+
+# cyclic types
+
+[Document]
+  - title
+  - creationDate (date)
+  - data (binary)
+
+[Folder] > Document
+  - foo
+  - bar (string) multiple
+  + who (Author)
+  + contributors (Author) multiple
+  + * (Folder)
+  + * (Document)

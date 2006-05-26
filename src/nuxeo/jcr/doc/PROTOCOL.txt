@@ -1,0 +1,166 @@
+===========================================
+Communication protocol between Zope and JCR
+===========================================
+
+This describes the communication protocol between Zope and the JCR stub
+server. It is mostly a text protocol, with '\n' as the line delimiter.
+
+Each command and result line starts with a single byte describing the
+command or the type of result.
+
+
+login
+-----
+
+A connection is initiated to the server for a given workspace. The
+server creates a JCR Session for this workspace. This is the mandatory
+first communication from the client, and is a form of login. The root
+node uuid is returned::
+
+ > Lworkspacename
+
+ < ^root-node-uuid
+
+getNodeType
+-----------
+
+Get the primary type of a node fiven its UUID::
+
+ > Tuuid
+
+ < Tnt:unstructured
+
+An error (starting with ``!``) is returned instead if the UUID doesn't
+exist.
+
+getNodeStates
+-------------
+
+Get the state of some nodes given their UUIDs.
+
+Returns information about the name, parent, children, and properties of
+the requested UUIDs. All properties values are returned except for
+costly ones (usually binaries), which can be retrieved separately using
+getNodeProperties.
+
+At the discretion of the server, information about more objects (usually
+children) can be returned, to optimize data transfers::
+
+ > Suuid1 uuid2
+
+ < Uuuid1 name
+ < ^parent-uuid
+ < Nchild1-uuid nodetype name1
+ < Nchild2-uuid nodetype name2
+ < Nchild3-uuid nodetype name3
+ < Nchild4-uuid1 child4-uuid2 child4-uuid3 nodetype name4
+ < Pname1
+ < [... value data ...]
+ < M5 name2
+ < [... 5 values data for multi-valued property ...]
+ < Dname3
+
+ < Uother-uuid other-name
+ < [...]
+
+ < Uuuid2 another-name
+ < [...]
+
+ < .
+
+If any requested UUID doesn't exist, only an error is returned, starting
+with::
+
+ < !
+
+Otherwise item information is returned.
+
+There is no ``^`` parent-uuid line if the node is the root.
+
+Children uuid are returned with tag N.
+
+Single-valued properties are returned with tag 'P'. Multi-valued
+properties are returned with tag 'M'. Deferred properties are returned
+with tag 'D' (and no data).
+
+The property values are then returned in a format that depends on their
+type. A description for each value type follows::
+
+String (UTF-8 encoded)::
+
+ < s123
+ < utf-8-string-which-is-123-bytes-long-not-including-additional-LF
+
+Binary::
+
+ < x456
+ < blob-which-is-456-bytes-long-not-including-additional-LF
+
+Long::
+
+ < l12345678
+
+Double (float)::
+
+ < f1234.5678
+
+Date (ISO 8601)::
+
+ < d2006-04-07T18:00:42.754+02:00
+ < d2006-04-07T18:00:42.754Z
+
+Boolean::
+
+ < b0 or b1
+
+Name::
+
+ < nfoo:bar
+
+Path::
+
+ < p/foo:bar/hee:goo
+
+Reference::
+
+ < rsome-node-uuid
+
+getNodeProperties
+-----------------
+
+ > Pnode-uuid name1 name2 name3
+
+ < !name1
+ < Pname2
+ < [... value data ...]
+ < [...]
+
+ < .
+
+Returns information about selected properties (see ``getNodeStates`` for
+the format), no values are deferred.
+
+The names on the command line are actually tab-separated, as the space
+is a legal character in names (which is also why names always appear as
+the last component of a line otherwise). The ``node-uuid`` and ``name1``
+are still separated with a space though.
+
+getNodeTypeDefs
+---------------
+
+Return the schemas of the node type definitions. A set of CND
+declarations are returned::
+
+ > D
+
+ < [sometype] > basetype ...
+ <   - someprop (long) multiple
+ < ...
+
+ < .
+
+getPendingEvents
+----------------
+
+Events have to be returned.
+XXX Synchronously by piggyback on a command answer, or asynchronously?

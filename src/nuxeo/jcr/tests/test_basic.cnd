@@ -1,0 +1,50 @@
+# Self-contained node type definitions in CND notation,
+# used by test_basic.txt
+
+########## bootstrap
+
+[nt:base]
+[mix:versionable]
+[rep:root]
+
+########## cps basics (simplified)
+
+# complex type base
+[cpsnt:type] mixin
+
+# schema base
+[cpsnt:schema] mixin
+
+# children node
+[cpsnt:children]
+
+# document
+[cpsnt:document] > mix:versionable
+  + cps:children (cpsnt:children)
+
+# non-orderable  folder
+[cpsnt:folder] > cpsnt:document
+  + * (cpsnt:document)
+
+# dublin core
+[cpss:dublincore] > cpsnt:schema
+  - title (String)
+  - description (String)
+
+########## example
+
+# a complex type for firstname+lastname
+[cpst:name] > cpsnt:type
+  - first (String)
+  - last (String)
+
+# the schema for the tripreport part
+[cpss:tripreport] > cpsnt:schema
+  - duedate (Date)
+  - cities (String) multiple
+  + name (cpst:name)
+  + friends (cpst:name) multiple
+  + mother (cpst:name)
+
+# a full document type
+[cps:tripreport] > cpsnt:document, cpss:tripreport, cpss:dublincore

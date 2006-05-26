@@ -1,0 +1,71 @@
+# Example schema that's designed to test all parsing aspects.
+# It's too general to be made into real zope 3 schemas.
+
+<ex = "http://example.org/jackrabbit/example">
+
+[bookType]
+  - id
+  - available (Boolean)
+  - isbn mandatory
+  + title (titleType) = titleType mandatory
+  + authors (authorsType) = authorsType mandatory
+  + characters (charactersType) = charactersType mandatory
+
+[authorType]
+  - id
+  - name mandatory
+  - born (Date) mandatory
+  - dead (Date)
+
+[xs:anyType]
+  orderable
+  - * (undefined)
+  + *
+  + jcr:xmltext (jcr:Xmltext) = jcr:Xmltext multiple
+
+[authorsType]
+  orderable
+  + author (authorType) = authorType multiple
+
+[characterType]
+  - id
+  - name mandatory
+  - born (Date) mandatory
+  - qualification mandatory
+
+[jcr:Xmltext]
+  - jcr:xmlcharacters
+
+[titleType]
+  - lang
+  - jcr:xmlContent
+
+[libraryType]
+  orderable
+  + book (bookType) = bookType mandatory multiple
+
+[charactersType]
+  orderable
+  + character (characterType) = characterType multiple
+
+[ex:NodeType] > ex:ParentNodeType1, ex:ParentNodeType2
+  orderable mixin
+  - ex:property (long)
+    = '1', '2' primary mandatory autocreated protected multiple version
+    < '[1,10]'
+  + ex:node (ex:RequiredNodeType1, ex:RequiredNodeType2)
+    = ex:RequiredNodeType1 mandatory autocreated protected multiple version
+
+[person]
+  + * (person)
+  # + foo (person) autocreated # forbidden loop
+
+[object]
+  - title
+
+[folder]
+  + * (object)
+
+[orderedfolder]
+  orderable
+  + * (object)

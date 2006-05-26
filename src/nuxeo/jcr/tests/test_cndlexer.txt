@@ -1,0 +1,26 @@
+.. -*- mode: doctest -*-
+
+Testing the CND lexer
+=====================
+
+  >>> from pprint import pprint
+  >>> from nuxeo.jcr.cnd import Lexer
+  >>> from StringIO import StringIO
+  >>> stream = StringIO("""
+  ...     # comment
+  ...     < > = [ ] - + ( )
+  ...     'blah blah'
+  ...     foo:bar
+  ... """)
+
+  >>> pprint(list(Lexer(stream))) #doctest: +NORMALIZE_WHITESPACE
+  ['<', '>', '=', '[', ']', '-', '+', '(', ')',
+   LexerString('blah blah'), LexerQName('foo:bar'), None]
+
+Edge cases to check::
+
+  >>> list(Lexer(StringIO("'abc")))
+  [LexerString('abc'), None]
+
+  >>> list(Lexer(StringIO("a b c")))
+  [LexerQName('a'), LexerQName('b'), LexerQName('c'), None]

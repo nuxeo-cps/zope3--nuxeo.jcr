@@ -1,0 +1,60 @@
+<?xml version="1.0"?>
+<!--
+  This file holds ZConfig configuration information.
+-->
+<component prefix="nuxeo.jcr.zconfig">
+
+  <sectiontype name="capsule-jcr-db" implements="ZODB.database"
+               datatype=".JCRDatabaseFactory">
+
+    <key name="jcr-controller-class-name" required="yes">
+      <description>
+        Fully qualified dotted name of JCRController class, like:
+        nuxeo.jcr.protocol.JCRController
+      </description>
+    </key>
+
+    <key name="jcr-server" required="yes" datatype="socket-connection-address">
+      <description>
+        The host and port on which the capsule jcr server is running,
+        in the form 'hostname:port'.
+      </description>
+    </key>
+
+    <key name="jcr-workspace-name" required="yes">
+      <description>
+        The workspace to connect to.
+      </description>
+    </key>
+
+    <key name="jcr-slice-file" required="no">
+      <description>
+        Absolute path to Ice slice definition file for JCRIceController
+      </description>
+    </key>
+
+    <key name="jcr-ice-config" required="no">
+      <description>
+        Absolute path to Ice config file for JCRIceController
+      </description>
+    </key>
+
+    <!-- ZConfig refuses to let us extend the "zodb_db" section type,
+    therefore we have to duplicate.  Grumble.  The following is copied
+    from ZODB/component.xml and Zope/Startup/zopeschema.xml, with
+    package names expanded. -->
+
+    <key name="cache-size" datatype="integer" default="20000"/>
+    <key name="pool-size" datatype="integer" default="7"/>
+
+    <multikey name="mount-point" required="yes" attribute="mount_points"
+              datatype="Zope2.Startup.datatypes.mount_point">
+      <description>
+       The mount point is the slash-separated path to which this database
+       will be mounted within the Zope application server.
+      </description>
+    </multikey>
+
+  </sectiontype>
+
+</component>

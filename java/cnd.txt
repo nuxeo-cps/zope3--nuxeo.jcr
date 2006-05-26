@@ -1,0 +1,41 @@
+<cpsnt='http://nuxeo.org/jcr/1.0/cpsnt/'>
+<cpss='http://nuxeo.org/jcr/1.0/cpss/'>
+<cpst='http://nuxeo.org/jcr/1.0/cpst/'>
+<cpsd='http://nuxeo.org/jcr/1.0/cpsd/'>
+<cps='http://nuxeo.org/jcr/1.0/cps/'>
+
+// complex type base
+[cpsnt:type]
+
+// schema base
+[cpsnt:schema]
+
+// document
+[cpsnt:document]
+
+// non-orderable  folder
+[cpsnt:folder] > cpsnt:document
+  + * (cpsnt:document)
+
+// dublin core
+[cpss:dublincore] > cpsnt:schema
+  - cps:title
+  - cps:description (String)
+
+////////// example
+
+// a complex type for firstname+lastname
+[cpst:name] > cpsnt:type
+  - cps:firstname (String)
+  - cps:lastname (String)
+
+// the schema for the tripreport part
+[cpss:tripreport] > cpsnt:schema
+  - cps:duedate (Date)
+  - cps:cities (String) multiple
+  + cps:username (cpst:name)
+  + cps:childrennames (cpst:name) multiple
+
+// a full document type
+[cpsd:tripreport] > cpsnt:document, cpss:tripreport, cpss:dublincore
+
