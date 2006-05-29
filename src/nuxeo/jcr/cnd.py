@@ -52,6 +52,7 @@ from nuxeo.capsule.field import BinaryField
 from nuxeo.capsule.field import ListPropertyField
 from nuxeo.capsule.field import ObjectPropertyField
 
+_MARKER = object()
 IDINITIAL = re.compile('[a-z]', re.IGNORECASE)
 IDENTIFIER = re.compile('[a-z0-9:_]', re.IGNORECASE)
 
@@ -167,8 +168,13 @@ def lexerGen(stream):
     - identifiers including colons
     - returns None at EOF
     """
+    pushback = _MARKER
     while True:
-        c = stream.read(1)
+        if pushback != _MARKER:
+            c = pushback
+            pushback = _MARKER
+        else:
+            c = stream.read(1)
         # EOF
         if not c:
             break
@@ -178,6 +184,13 @@ def lexerGen(stream):
         # comments
         elif c == '#':
             stream.readline()
+        elif c == '/':
+            c = stream.read(1)
+            if c == '/':
+                stream.readline()
+            else:
+                pushback = c
+                yield '/'
         # single-char tokens
         elif c in '<>=[]-+(),*!':
             yield c

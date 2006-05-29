@@ -9,7 +9,7 @@ Testing the CND lexer
   >>> stream = StringIO("""
   ...     # comment
   ...     < > = [ ] - + ( )
-  ...     'blah blah'
+  ...     'blah blah' //comment
   ...     foo:bar
   ... """)
 
