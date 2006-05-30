@@ -185,7 +185,7 @@ interface and precondition::
     True
     >>> precondition = IFolder['__setitem__'].getTaggedValue('precondition')
     >>> [t.__name__ for t in precondition.types]
-    ['IFolder', 'IDocument']
+    ['Folder', 'Document']
 
 Check that complex types have been converted correctly::
 

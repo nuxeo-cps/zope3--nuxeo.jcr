@@ -695,8 +695,6 @@ class Parser(object):
         allattrs = {}
         for type_name in type_names:
             info = infos[type_name]
-            name = type_name.replace(':', '')
-            name = 'I' + name[0].capitalize() + name[1:]
             attrs = {} # will be mutated later
 
             # Are we a container?
@@ -714,7 +712,7 @@ class Parser(object):
                 attrs['__setitem__'] = __setitem__
             elif not bases:
                 bases = (zope.interface.Interface,)
-            interface = InterfaceClass(name, bases, attrs,
+            interface = InterfaceClass(type_name, bases, attrs,
                                        __module__='nuxeo.jcr') # XXX
             interfaces[type_name] = interface
             allattrs[type_name] = attrs
