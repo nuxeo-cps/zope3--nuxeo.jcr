@@ -523,7 +523,7 @@ class InterfaceMaker(object):
     """An incremental interface maker that can be fed new data later.
     """
 
-    def __init__(self, input):
+    def __init__(self, input=None):
         self._namespaces = {}
         self._infos = {}
         self._interfaces = {}
