@@ -519,6 +519,57 @@ class Parser(object):
         return namespaces, schemas
 
 
+class InterfaceMaker(object):
+    """An incremental interface maker that can be fed new data later.
+    """
+
+    def __init__(self, input):
+        self._namespaces = {}
+        self._infos = {}
+        self._interfaces = {}
+        if input is not None:
+            self.addData(input)
+
+    def addData(self, input):
+        """Add new schemas to the currently defined data.
+
+        `f` is a file or a string.
+
+        Returns the list of interface names that were added.
+        """
+        parser = Parser(input)
+        namespaces, infos = parser.getData()
+
+        for ns, uri in namespaces.iteritems():
+            if ns in self._namespaces and self._namespaces[ns] != uri:
+                raise ValueError("Namespace %r redefined (%r != %r)" %
+                                 (ns, self._namespaces[ns], uri))
+        for node_type, info in infos.iteritems():
+            if node_type in self._infos:
+                raise ValueError("Node type %r redefined" % node_type)
+        self._namespaces.update(namespaces)
+        self._infos.update(infos)
+
+        type_names = infos.keys()
+        self._buildSchemas(type_names)
+        return type_names
+
+    def keys(self):
+        return self._interfaces.keys()
+
+    def iteritems(self):
+        return self._interfaces.iteritems()
+
+    def __getitem__(self, name):
+        return self._interfaces[name]
+
+    def getNamespaces(self):
+        return self._namespaces
+
+    #
+    # Internal API
+    #
+
     def makeString(self, info):
         """Makes a field from a JCR strings property."""
         constraint = None
@@ -671,7 +722,7 @@ class Parser(object):
         'undefined': makeUndefinedList,
         }
 
-    def _makeInterfaces(self, infos):
+    def _makeInterfaces(self, type_names):
         """Build empty interfaces.
 
         They will be mutated later to add fields. This allows fields to
@@ -685,16 +736,18 @@ class Parser(object):
         # Compute a topological sort of the available types
         # so that dependents are done first
         graph = dict((type_name, info['supertypes'])
-                     for type_name, info in infos.iteritems())
+                     for type_name, info in self._infos.iteritems())
         try:
-            type_names = topologicalSort(graph)
+            sorted_type_names = topologicalSort(graph)
         except ValueError, e:
             raise ValueError("%s in type inheritance" % e.args[0])
 
-        interfaces = {}
-        allattrs = {}
-        for type_name in type_names:
-            info = infos[type_name]
+        new_fields = {}
+        for type_name in sorted_type_names:
+            if type_name not in type_names:
+                # Only new ones
+                continue
+            info = self._infos[type_name]
             attrs = {} # will be mutated later
 
             # Are we a container?
@@ -702,7 +755,8 @@ class Parser(object):
                                 if node['name'] == '*')
 
             # Find which bases to use.
-            bases = tuple([interfaces[sup] for sup in info['supertypes']])
+            bases = tuple([self._interfaces[sup]
+                           for sup in info['supertypes']])
             # Containers use IContainer, the rest Interface
             if is_container:
                 bases += (IContainer,)
@@ -714,15 +768,16 @@ class Parser(object):
                 bases = (zope.interface.Interface,)
             interface = InterfaceClass(type_name, bases, attrs,
                                        __module__='nuxeo.jcr') # XXX
-            interfaces[type_name] = interface
-            allattrs[type_name] = attrs
-        return interfaces, allattrs
+            self._interfaces[type_name] = interface
+            new_fields[type_name] = attrs
+        return new_fields
 
-    def buildSchemas(self, infos):
-        """Build the full schemas from information passed.
+    def _buildSchemas(self, type_names):
+        """Build the full schemas for the given type names.
         """
-        interfaces, allattrs = self._makeInterfaces(infos)
-        for type_name, info in infos.items():
+        new_fields = self._makeInterfaces(type_names)
+        for type_name in type_names:
+            info = self._infos[type_name]
             if type_name in ('rep:system', # multiple * child nodes
                              'rep:versionStorage', # multiple * child nodes
                              'nt:frozenNode', # * properties
@@ -730,8 +785,8 @@ class Parser(object):
                              'nt:versionLabels', # * properties
                              ):
                 continue
-            iface = interfaces[type_name]
-            attrs = allattrs[type_name]
+            iface = self._interfaces[type_name]
+            fields = new_fields[type_name]
             for propinfo in info['properties']:
                 propname = propinfo['name']
                 if propname == '*':
@@ -742,7 +797,7 @@ class Parser(object):
                     field = self.multiple_type_makers[t](self, propinfo)
                 else:
                     field = self.type_makers[t](self, propinfo)
-                attrs[propname] = field
+                fields[propname] = field
             for nodeinfo in info['nodes']:
                 nodename = nodeinfo['name']
                 req = nodeinfo['required_types']
@@ -751,7 +806,7 @@ class Parser(object):
                 elif len(req) == 1:
                     t = req[0]
                     try:
-                        schema = interfaces[t]
+                        schema = self._interfaces[t]
                     except KeyError:
                         raise ValueError("Unknown type %s referenced by [%s] "
                                          "+ %s" % (t, type_name, nodename))
@@ -776,5 +831,4 @@ class Parser(object):
                     if nodeinfo['options']['multiple']:
                         field = ListPropertyField(__name__=nodename,
                                                   value_type=field)
-                    attrs[nodename] = field
-        return interfaces
+                    fields[nodename] = field

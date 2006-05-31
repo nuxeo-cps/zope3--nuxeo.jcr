@@ -27,7 +27,7 @@ from nuxeo.capsule import Children
 from nuxeo.jcr.impl import ObjectProperty
 from nuxeo.jcr.connection import Connection
 from nuxeo.jcr.protocol import JCRController
-from nuxeo.jcr import cnd
+from nuxeo.jcr.cnd import InterfaceMaker
 
 class DB(ZODBDB):
     """Capsule JCR DB
@@ -100,9 +100,7 @@ class DB(ZODBDB):
 
         # Get node type definitions as CND, and parse that
         defs = controller.getNodeTypeDefs()
-        parser = cnd.Parser(defs)
-        namespaces, schemas = parser.getData()
-        interfaces = parser.buildSchemas(schemas)
+        interfaces = InterfaceMaker(defs)
 
         # Build classes and register schemas and types
         try:

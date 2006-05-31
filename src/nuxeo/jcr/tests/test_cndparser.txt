@@ -118,47 +118,47 @@ We can also parse JackRabbit's default types::
 Building schemas
 ----------------
 
-Now from the parsed data we build actual Zope 3 schemas.
+Now we can build directly actual Zope 3 schemas::
+
+    >>> from nuxeo.jcr.cnd import InterfaceMaker
 
 Some things we disallow::
 
-    >>> p = Parser("[foo] - *")
-    >>> ns, data = p.getData()
-    >>> p.buildSchemas(data)
+    >>> InterfaceMaker("[foo] - *")
     Traceback (most recent call last):
       ...
     ValueError: * properties are disallowed for [foo]
 
-    >>> p = Parser("[foo] + * mul")
-    >>> ns, data = p.getData()
-    >>> p.buildSchemas(data)
+    >>> InterfaceMaker("[foo] + * mul")
     Traceback (most recent call last):
       ...
     ValueError: Multiple * child nodes are disallowed for [foo]
 
-    >>> p = Parser("[foo] + bar (x, y)")
-    >>> ns, data = p.getData()
-    >>> p.buildSchemas(data)
+    >>> InterfaceMaker("[foo] + bar (x, y)")
     Traceback (most recent call last):
       ...
     ValueError: Can't have more than one required type for [foo] + bar
 
 Inheritance of types is taken into account::
 
-    >>> s = "[foo] > bar - at1  [bar] - at2"
-    >>> p = Parser(s)
-    >>> ns, data = p.getData()
-    >>> ifaces = p.buildSchemas(data)
+    >>> ifaces = InterfaceMaker("[foo] > bar - at1  [bar] - at2")
     >>> IFoo, IBar = ifaces['foo'], ifaces['bar']
     >>> IFoo.isOrExtends(IBar)
     True
 
+We can build schemas incrementally, by adding later a definition
+involving earlier schemas:
+
+    >>> ifaces.addData("[baz] > foo")
+    ['baz']
+    >>> ifaces['baz'].isOrExtends(IFoo)
+    True
+    >>> sorted(ifaces.keys())
+    ['bar', 'baz', 'foo']
+
 An inheritance loop produces an error::
 
-    >>> s = "[foo] > bar - at1  [bar] > foo - at2"
-    >>> p = Parser(s)
-    >>> ns, data = p.getData()
-    >>> ifaces = p.buildSchemas(data)
+    >>> InterfaceMaker("[foo] > bar - at1  [bar] > foo - at2")
     Traceback (most recent call last):
       ...
     ValueError: Loop involving 'bar', 'foo' in type inheritance
@@ -167,11 +167,9 @@ An inheritance loop produces an error::
 Let's test with a realistic CND schema::
 
     >>> f = file(os.path.join(testdir, 'example2.cnd'))
-    >>> p = Parser(f)
-    >>> ns, data = p.getData()
-    >>> sorted(data.keys())
+    >>> ifaces = InterfaceMaker(f)
+    >>> sorted(ifaces.keys())
     ['Author', 'Book', 'Company', 'Document', 'Folder']
-    >>> ifaces = p.buildSchemas(data)
 
 Check that the interface for Folder has been done correctly, with base
 interface and precondition::
