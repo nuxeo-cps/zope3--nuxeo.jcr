@@ -23,7 +23,7 @@ from nuxeo.capsule.schema import SchemaManager
 from nuxeo.capsule.type import TypeManager
 from nuxeo.capsule.type import Type
 from nuxeo.jcr.impl import Document
-from nuxeo.capsule import Children
+from nuxeo.capsule.base import Children
 from nuxeo.jcr.impl import ObjectProperty
 from nuxeo.jcr.connection import Connection
 from nuxeo.jcr.protocol import JCRController

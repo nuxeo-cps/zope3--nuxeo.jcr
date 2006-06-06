@@ -21,10 +21,10 @@ information.
 
 from persistent import Persistent
 import zope.interface
-from nuxeo.capsule.impl import ObjectBase as CapsuleObjectBase
-from nuxeo.capsule.impl import Document as CapsuleDocument
-from nuxeo.capsule.impl import ListProperty as CapsuleListProperty
-from nuxeo.capsule.impl import ObjectProperty as CapsuleObjectProperty
+from nuxeo.capsule.base import ObjectBase as CapsuleObjectBase
+from nuxeo.capsule.base import Document as CapsuleDocument
+from nuxeo.capsule.base import ListProperty as CapsuleListProperty
+from nuxeo.capsule.base import ObjectProperty as CapsuleObjectProperty
 from nuxeo.jcr.interfaces import INonPersistent
 
 

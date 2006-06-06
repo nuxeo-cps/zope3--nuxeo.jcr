@@ -40,7 +40,7 @@ from nuxeo.capsule.interfaces import IListPropertyField
 from nuxeo.capsule.interfaces import IObjectPropertyField
 from nuxeo.jcr.interfaces import INonPersistent
 
-from nuxeo.capsule import Children
+from nuxeo.capsule.base import Children
 from nuxeo.jcr.impl import ListProperty
 from nuxeo.jcr.impl import ObjectProperty
 from nuxeo.jcr.impl import Document
