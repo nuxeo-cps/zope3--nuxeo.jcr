@@ -252,7 +252,7 @@ class Parser(object):
     def getNamespace(self):
         next = self.lexer.next
         token = next()
-        if not isinstance(token, LexerQName):
+        if not isinstance(token, (LexerQName, LexerString)):
             raise ValueError(token)
         ns = token.value
         token = next()

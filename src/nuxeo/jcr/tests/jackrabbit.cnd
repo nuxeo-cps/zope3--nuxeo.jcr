@@ -1,5 +1,6 @@
 # These are the default jackrabbit node types
 
+<''=''>
 <rep='internal'>
 <nt='http://www.jcp.org/jcr/nt/1.0'>
 <mix='http://www.jcp.org/jcr/mix/1.0'>
