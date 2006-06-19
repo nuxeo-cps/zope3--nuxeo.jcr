@@ -28,7 +28,7 @@ The standard connection's dialogue with the JCR server is:
 
 import sys
 from persistent import Persistent
-from nuxeo.treedelta import FullTreeDelta, ADD, REMOVE, MODIFY
+from nuxeo.treedelta import TreeDelta, ADD, REMOVE, MODIFY
 from ZODB.POSException import ConflictError
 from ZODB.POSException import ReadConflictError
 from ZODB.POSException import ConnectionStateError
@@ -678,7 +678,7 @@ class Connection(ZODBConnection):
 
         # JCR properties
         prop_map = {}
-        type_name = 'cps:UnknownType' # XXX
+        type_name = 'ecm:UnknownType' # XXX
         for prop_name, prop_value in properties:
             if prop_name == 'jcr:primaryType':
                 type_name = prop_value
@@ -714,7 +714,7 @@ class Connection(ZODBConnection):
                 continue
             # Get child
             child = self._getTyped(child_uuid, child_type, child_jcr_path)
-            if child_name == 'cps:children' and full_document:
+            if child_name == 'ecm:children' and full_document:
                 state['_children'] = child
             elif child_name in prop_map:
                 # Multiple type, add to ListProperty

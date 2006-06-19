@@ -19,15 +19,14 @@
 import threading
 from ZODB.DB import DB as ZODBDB
 from zope.schema.interfaces import IList
-from nuxeo.capsule.schema import SchemaManager
-from nuxeo.capsule.type import TypeManager
-from nuxeo.capsule.type import Type
-from nuxeo.jcr.impl import Document
 from nuxeo.capsule.base import Children
+from nuxeo.capsule.interfaces import IDocument
+from nuxeo.capsule.interfaces import IObjectBase
+from nuxeo.jcr.schema import SchemaManager
+from nuxeo.jcr.impl import Document
 from nuxeo.jcr.impl import ObjectProperty
 from nuxeo.jcr.connection import Connection
 from nuxeo.jcr.protocol import JCRController
-from nuxeo.jcr.cnd import InterfaceMaker
 
 class DB(ZODBDB):
     """Capsule JCR DB
@@ -38,14 +37,7 @@ class DB(ZODBDB):
 
     # this lock protects schema creation
     _schemas_load_lock = None # threading.Lock
-    _interfaces = None # mapping node type to interface
-    _classes = None # mapping node type to class
-    _basic_classes = {
-        'rep:root': Document,
-        'nt:unstructured': Document,
-        }
     _schema_manager = None # SchemaManager
-    _type_manager = None # TypeManager
 
     def __init__(self,
                  database_name='unnamed-jcr',
@@ -85,65 +77,38 @@ class DB(ZODBDB):
         """
         self._schemas_load_lock.acquire()
         try:
-            if self._classes is None:
+            if self._schema_manager is None:
                 # First connection to load them
-                self._loadSchemas(controller)
+                self._schema_manager = self._loadSchemas(controller)
         finally:
             self._schemas_load_lock.release()
 
     def _loadSchemas(self, controller):
         # Called with the lock held
-        schema_manager = SchemaManager()
-        self._schema_manager = schema_manager
-        type_manager = TypeManager()
-        self._type_manager = type_manager
+        sm = SchemaManager()
 
-        # Get node type definitions as CND, and parse that
+        # Add node type definitions from the JCR
         defs = controller.getNodeTypeDefs()
-        interfaces = InterfaceMaker(defs)
+        sm.addCND(defs)
 
-        # Build classes and register schemas and types
-        try:
-            ICPSType = interfaces['cpsnt:type']
-            ICPSSchema = interfaces['cpsnt:schema']
-            ICPSDocument = interfaces['cpsnt:document']
-        except KeyError:
-            # The JCR isn't prepped for CPS
-            from zope.interface import Interface
-            ICPSSchema = Interface
-            ICPSDocument = Interface
-        classes = self._basic_classes.copy()
-        for node_type, interface in interfaces.iteritems():
-            # TODO: use namespace URIs
-            if (node_type.startswith('mix:') or
-                node_type.startswith('rep:') or
-                node_type.startswith('nt:')):
-                continue
-            if (node_type.startswith('cpsnt:') and
-                node_type != 'cpsnt:children'):
-                continue
-            if (interface.isOrExtends(ICPSSchema) or
-                interface.isOrExtends(ICPSType) or
-                node_type == 'cpsnt:children'):
-                schema_manager.addSchema(node_type, interface)
-                if interface.isOrExtends(ICPSDocument):
-                    type = Type(node_type, interface,
-                                container=True, ordered=False)
-                    type_manager.addType(type)
-                    classes[node_type] = Document # XXX
-                elif interface.isOrExtends(ICPSType):
-                    classes[node_type] = ObjectProperty
-                elif node_type == 'cpsnt:children':
-                    classes[node_type] = Children
+        # Set classes for document/schema nodes
+        for name, schema in sm.getSchemas().iteritems():
+            if schema.isOrExtends(IDocument):
+                sm.setClass(name, Document)
+            elif schema.isOrExtends(IObjectBase):
+                sm.setClass(name, ObjectProperty)
 
-        # Set last to ensure locking
-        self._classes = classes
+        # Other classes used
+        sm.setClass('ecmnt:children', Children)
+        sm.setClass('rep:root', Document)
+
+        return sm
 
 
     def getClass(self, node_type):
         """Get the class for a given JCR node type.
         """
-        klass = self._classes.get(node_type)
+        klass = self._schema_manager.getClass(node_type, None)
         if klass is not None:
             return klass
         raise ValueError("Unknown node type: %r" % node_type)
@@ -158,6 +123,7 @@ class DB(ZODBDB):
         else:
             multiple = IList.providedBy(schema[name])
         return multiple
+
 
 class NoStorage(object):
     """Dummy storage.

@@ -52,6 +52,12 @@ from nuxeo.capsule.field import BinaryField
 from nuxeo.capsule.field import ListPropertyField
 from nuxeo.capsule.field import ObjectPropertyField
 
+from nuxeo.capsule.interfaces import IDocument
+from nuxeo.capsule.interfaces import IObjectBase
+from nuxeo.capsule.interfaces import IChildren
+
+
+
 _MARKER = object()
 IDINITIAL = re.compile('[a-z]', re.IGNORECASE)
 IDENTIFIER = re.compile('[a-z0-9:_]', re.IGNORECASE)
@@ -523,6 +529,12 @@ class InterfaceMaker(object):
     """An incremental interface maker that can be fed new data later.
     """
 
+    _predefined = {
+        'ecmnt:document': IDocument,
+        'ecmnt:schema': IObjectBase,
+        'ecmnt:children': IChildren,
+        }
+
     def __init__(self, input=None):
         self._namespaces = {}
         self._infos = {}
@@ -747,6 +759,15 @@ class InterfaceMaker(object):
             if type_name not in type_names:
                 # Only new ones
                 continue
+
+            # Hardcoded interface, use it
+            iface = self._predefined.get(type_name)
+            if iface is not None:
+                self._interfaces[type_name] = iface
+                self._interfaces[iface.getName()] = iface # Real name
+                new_fields[type_name] = None
+                continue
+
             info = self._infos[type_name]
             attrs = {} # will be mutated later
 
@@ -766,10 +787,11 @@ class InterfaceMaker(object):
                 attrs['__setitem__'] = __setitem__
             elif not bases:
                 bases = (zope.interface.Interface,)
-            interface = InterfaceClass(type_name, bases, attrs,
-                                       __module__='nuxeo.jcr') # XXX
-            self._interfaces[type_name] = interface
+            iface = InterfaceClass(type_name, bases, attrs,
+                                   __module__='nuxeo.jcr') # XXX
+            self._interfaces[type_name] = iface
             new_fields[type_name] = attrs
+
         return new_fields
 
     def _buildSchemas(self, type_names):
@@ -787,6 +809,14 @@ class InterfaceMaker(object):
                 continue
             iface = self._interfaces[type_name]
             fields = new_fields[type_name]
+
+            if fields is None:
+                if info['properties'] or info['nodes']:
+                    raise ValueError("Predefined interface %s [%s] cannot "
+                                     "have properties or nodes" %
+                                     (iface.getName(), type_name))
+                continue
+
             for propinfo in info['properties']:
                 propname = propinfo['name']
                 if propname == '*':
@@ -798,6 +828,7 @@ class InterfaceMaker(object):
                 else:
                     field = self.type_makers[t](self, propinfo)
                 fields[propname] = field
+
             for nodeinfo in info['nodes']:
                 nodename = nodeinfo['name']
                 req = nodeinfo['required_types']

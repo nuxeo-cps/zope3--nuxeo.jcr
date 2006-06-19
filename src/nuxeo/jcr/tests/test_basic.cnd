@@ -1,50 +1,59 @@
-# Self-contained node type definitions in CND notation,
-# used by test_basic.txt
+// Self-contained node type definitions in CND notation,
+// used by test_basic.txt
+// $Id: cps.cnd 46617 2006-06-19 16:31:27Z fguillaume $
 
-########## bootstrap
+<''=''>
+<ecm='http://nuxeo.org/ecm/jcr/names'>
+<ecmnt='http://nuxeo.org/ecm/jcr/types'>
+<ecmdt='http://nuxeo.org/ecm/jcr/docs'>
+<ecmst='http://nuxeo.org/ecm/jcr/schemas'>
+<dc='http://purl.org/dc/elements/1.1/'>
 
-[nt:base]
-[mix:versionable]
-[rep:root]
+//// bootstrap
 
-########## cps basics (simplified)
+//[nt:base]
+//[mix:versionable]
+//[rep:root]
 
-# complex type base
-[cpsnt:type] mixin
 
-# schema base
-[cpsnt:schema] mixin
+//// bases
 
-# children node
-[cpsnt:children]
+// base of all our non-mixin JCR types
+[ecmnt:base]
 
-# document
-[cpsnt:document] > mix:versionable
-  + cps:children (cpsnt:children)
+// schema base
+[ecmnt:schema] > ecmnt:base
 
-# non-orderable  folder
-[cpsnt:folder] > cpsnt:document
-  + * (cpsnt:document)
+// document base
+[ecmnt:document] > ecmnt:base
 
-# dublin core
-[cpss:dublincore] > cpsnt:schema
-  - title (String)
-  - description (String)
+// children nodes
+[ecmnt:children] > ecmnt:base
 
-########## example
+
+//// standard schemas
+
+// dublin core
+[ecmst:dublincore] > ecmnt:schema
+  - dc:title
+  - dc:description
+
+
+/////////// example
 
 # a complex type for firstname+lastname
-[cpst:name] > cpsnt:type
+[ecmst:name] > ecmnt:schema
   - first (String)
   - last (String)
 
 # the schema for the tripreport part
-[cpss:tripreport] > cpsnt:schema
+[ecmst:tripreport] > ecmnt:schema
   - duedate (Date)
   - cities (String) multiple
-  + name (cpst:name)
-  + friends (cpst:name) multiple
-  + mother (cpst:name)
+  + name (ecmst:name)
+  + friends (ecmst:name) multiple
+  + mother (ecmst:name)
+
 
 # a full document type
-[cps:tripreport] > cpsnt:document, cpss:tripreport, cpss:dublincore
+[tripreport] > ecmnt:document, ecmst:tripreport, ecmst:dublincore
