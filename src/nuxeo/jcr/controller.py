@@ -27,10 +27,6 @@ from datetime import datetime
 from nuxeo.jcr.interfaces import IJCRController
 from nuxeo.jcr.interfaces import ProtocolError
 
-try:
-    import Ice
-except ImportError:
-    pass
 
 class JCRController(object):
     """JCR Controller.
@@ -285,13 +281,20 @@ class JCRController(object):
             raise ProtocolError(line)
         return reader(self, line[1:])
 
+    def sendCommands(self, commands):
+        """See IJCRController.
+        """
+        raise NotImplementedError
+
     def getNodeProperties(self, uuid, names):
         """See IJCRController.
         """
+        raise NotImplementedError('Unused')
 
     def getPendingEvents(self):
         """See IJCRController.
         """
+        raise NotImplementedError('Unused')
 
 
 class JCRIceController(object):
@@ -302,6 +305,7 @@ class JCRIceController(object):
     zope.interface.implements(IJCRController)
 
     def __init__(self, db):
+        import Ice
         self.ice_config = db.ice_config
         slice_file = db.slice_file
         Ice.loadSlice(slice_file)
@@ -313,6 +317,7 @@ class JCRIceController(object):
     def connect(self):
         """Connect the controller to the server.
         """
+        import Ice
         try:
             props = Ice.createProperties()
             props.load(self.ice_config)
@@ -423,10 +428,17 @@ class JCRIceController(object):
         converter = self._valueConverters.get(type)
         return converter(self, value)
 
+    def sendCommands(self, commands):
+        """See IJCRController.
+        """
+        raise NotImplementedError
+
     def getNodeProperties(self, uuid, names):
         """See IJCRController.
         """
+        raise NotImplementedError('Unused')
 
     def getPendingEvents(self):
         """See IJCRController.
         """
+        raise NotImplementedError('Unused')

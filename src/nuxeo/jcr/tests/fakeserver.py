@@ -164,16 +164,8 @@ class FakeJCRController(object):
                 raise ProtocolError("invalid op %r" % (op,))
         return map
 
-    def setNodeState(self, uuid, props):
-        try:
-            node = self._data[uuid]
-        except KeyError:
-            raise ProtocolError(uuid)
-        for name, value in props:
-            node.properties[name] = value
+    def getNodeProperties(self, uuid, names):
+        raise NotImplementedError('Unused')
 
-    def addNode(self, uuid, name, node_type):
-        raise NotImplementedError
-
-    def removeNode(self, uuid, name):
-        raise NotImplementedError
+    def getPendingEvents(self):
+        raise NotImplementedError('Unused')

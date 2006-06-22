@@ -32,26 +32,26 @@ class IJCRController(Interface):
     They are accumulated and can be read by ``getPendingEvents()``.
     """
 
+    def connect():
+        """Connect the controller to the server.
+        """
+
     def login(workspaceName):
         """Login to a given workspace.
 
         This is the first command sent.
-        It returns the root node UUID.
+        Returns the root node UUID.
         """
 
     def getNodeTypeDefs():
         """Get the schemas of the node type definitions.
 
-        A string container a set of CND declarations is returned. System
-        types may be omitted.
+        Returns a string containing a set of CND declarations.
+        System types may be omitted.
         """
 
     def getNodeType(uuid):
         """Get the type of a node.
-        """
-
-    def getNodeTypeAndPath(uuid):
-        """Get the type of a node and its JCR path.
         """
 
     def getNodeStates(uuids):
@@ -93,34 +93,13 @@ class IJCRController(Interface):
         """Send a sequence of modification commands to the JCR.
 
         `commands` is an iterable returning tuples of the form:
-        - ADD, parent_uuid, name, node_type, props_mapping, token
-        - MODIFY, uuid, props_mapping
-        - REMOVE, uuid
+        - 'add', parent_uuid, name, node_type, props_mapping, token
+        - 'modify', uuid, props_mapping
+        - 'remove', uuid XXX
+        - 'order' XXX
 
         Returns a mapping of token -> uuid, which gives the new UUIDs
         for created nodes.
-        """
-
-    def setNodeState(uuid, properties):
-        """Set the state of a node.
-
-        - `properties` is a sequence of (`name`, `value`)
-        """
-
-    def addNode(uuid, name, node_type):
-        """Add a node.
-
-        A node `name` of type `node_type` is added in the node of the
-        given UUID.
-
-        Returns the uuid of the new node.
-        """
-
-    def removeNode(uuid, name):
-        """Remove nodes.
-
-        Remove all children of the given UUID called `name` (there may
-        be multiple ones in case of same-name siblings).
         """
 
     def getPendingEvents():

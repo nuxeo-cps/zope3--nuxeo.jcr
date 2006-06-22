@@ -18,6 +18,24 @@
 
 import unittest
 from zope.testing.doctest import DocFileTest
+from zope.interface.verify import verifyClass
+
+class InterfaceTests(unittest.TestCase):
+
+    def test_JCRController(self):
+        from nuxeo.jcr.interfaces import IJCRController
+        from nuxeo.jcr.controller import JCRController
+        verifyClass(IJCRController, JCRController)
+
+    def test_JCRIceController(self):
+        from nuxeo.jcr.interfaces import IJCRController
+        from nuxeo.jcr.controller import JCRIceController
+        verifyClass(IJCRController, JCRIceController)
+
+    def test_FakeJCRController(self):
+        from nuxeo.jcr.interfaces import IJCRController
+        from nuxeo.jcr.tests.fakeserver import FakeJCRController
+        verifyClass(IJCRController, FakeJCRController)
 
 
 def test_suite():
@@ -25,6 +43,7 @@ def test_suite():
     import os.path
     testdir = os.path.dirname(nuxeo.jcr.tests.__file__)
     return unittest.TestSuite((
+        unittest.makeSuite(InterfaceTests),
         DocFileTest('test_basic.txt', globs=dict(testdir=testdir)),
         ))
 
