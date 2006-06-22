@@ -53,6 +53,7 @@ from nuxeo.capsule.field import ListPropertyField
 from nuxeo.capsule.field import ObjectPropertyField
 
 from nuxeo.capsule.interfaces import IDocument
+from nuxeo.capsule.interfaces import IWorkspace
 from nuxeo.capsule.interfaces import IObjectBase
 from nuxeo.capsule.interfaces import IChildren
 
@@ -530,6 +531,7 @@ class InterfaceMaker(object):
     """
 
     _predefined = {
+        'rep:root': IWorkspace,
         'ecmnt:document': IDocument,
         'ecmnt:schema': IObjectBase,
         'ecmnt:children': IChildren,
@@ -788,7 +790,7 @@ class InterfaceMaker(object):
             elif not bases:
                 bases = (zope.interface.Interface,)
             iface = InterfaceClass(type_name, bases, attrs,
-                                   __module__='nuxeo.jcr') # XXX
+                                   __module__='nuxeo.jcr.dynamic') # XXX
             self._interfaces[type_name] = iface
             new_fields[type_name] = attrs
 

@@ -129,12 +129,8 @@ class FakeJCRController(object):
         for command in commands:
             op = command[0]
             if op == 'add':
-                token, path, node_type, props = command[1:]
-                ppath, name = path[:-1], path[-1]
-                try:
-                    puuid = self._getUUIDfromPath(ppath)
-                except ProtocolError:
-                    raise ProtocolError("Unknown path %r" % '/'.join(ppath))
+                raise NotImplementedError
+                puuid, name, node_type, props, token = command[1:]
                 uuid = 'cafe-%04d' % self._next_uuid
                 self._next_uuid += 1
                 self._addChild(puuid, uuid, name, node_type, [], props)

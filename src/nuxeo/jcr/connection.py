@@ -28,17 +28,18 @@ The standard connection's dialogue with the JCR server is:
 
 import sys
 from persistent import Persistent
-from nuxeo.treedelta import TreeDelta, ADD, REMOVE, MODIFY
 from ZODB.POSException import ConflictError
 from ZODB.POSException import ReadConflictError
 from ZODB.POSException import ConnectionStateError
 from ZODB.POSException import InvalidObjectReference
 from ZODB.Connection import Connection as ZODBConnection
 
-from nuxeo.capsule.interfaces import IObjectBase # XXX
+from nuxeo.capsule.interfaces import IObjectBase
+from nuxeo.capsule.interfaces import IProperty
+from nuxeo.capsule.interfaces import IListProperty
+from nuxeo.capsule.interfaces import ICapsuleField
 from nuxeo.capsule.interfaces import IListPropertyField
 from nuxeo.capsule.interfaces import IObjectPropertyField
-from nuxeo.jcr.interfaces import INonPersistent
 
 from nuxeo.capsule.base import Children
 from nuxeo.jcr.impl import ListProperty
@@ -66,33 +67,53 @@ class Connection(ZODBConnection):
 
     Connection to a JCR storage.
 
-    Misc notes about ZODBConnection:
+    Misc notes about base ZODBConnection
+    ------------------------------------
 
-    _added is a dict of oid->obj added explicitely through add(). _added
-    is used as a sort of preliminary cache until commit time where
-    they're all moved to the real _cache. The object are moved to
-    _creating at commit time.
+    - _cache is a PickleCache, a cache which can ghostify objects not
+      recently used. Its API is roughly that of a dict, with additional
+      gc-related and invalidation-related methods.
 
-    _registered_objects is the list of objects registered by Persistence
-    when the object was first changed, or by add(). It also contains
-    objects who ended up in a ReadConflictError, just to be able to
-    clean them up from the cache on abort with the other modified
-    objects.
+    - _added is a dict of oid->obj added explicitly through add().
+      _added is used as a preliminary cache until commit time when
+      objects are all moved to the real _cache. The objects are moved to
+      _creating at commit time.
 
-    _creating is a dict of oid->flag of new objects (without serial),
-    either added by add() or implicitely created (during commit). The
-    flag is True for implicit adding. _creating is used during abort to
-    remove created objects from the cache, and by persistent_id to check
-    that a new object isn't reachable from multiple databases. It's
-    filled at commit time.
+    - _registered_objects is the list of objects registered by
+      Persistence when the object was first changed, or by add(). It
+      also contains objects who ended up in a ReadConflictError, just to
+      be able to clean them up from the cache on abort with the other
+      modified objects. All objects of this list are either in _cache or
+      in _added.
 
-    _modified is a list of oids modified, which have to be invalidated
-    in the cache on abort and in other connections on finish. It's
-    filled at commit time.
+    During commit, all objects go to either _modified or _creating:
 
-    During commit, all stored objects go into either _modified or
-    _creating.
+    - _creating is a dict of oid->flag of new objects (without serial),
+      either added by add() or implicitely added (discovered by the
+      serializer during commit). The flag is True for implicit adding.
+      _creating is used during abort to remove created objects from the
+      _cache, and by persistent_id to check that a new object isn't
+      reachable from multiple databases.
 
+    - _modified is a list of oids modified, which have to be invalidated
+      in the cache on abort and in other connections on finish.
+
+    JCR Connection differences
+    --------------------------
+
+    - _registered_objects is not used, replaced by _registered.
+
+    - _creating is not used, replaced by _created.
+
+    - _registered is a mapping of oid to a set of modified attributes
+      for object in the _cache. It doesn't include objects from _added.
+
+    - _created is a set, filled at commit/savepoint time with objects
+      created.
+
+    - _modified is a set, filled at commit/savepoint time with objects
+      touched. Not that this can include object in _created from a
+      previous savepoint.
 
     Lifecycle of a persistent object
     --------------------------------
@@ -108,46 +129,29 @@ class Connection(ZODBConnection):
     - a full object fetched from storage through the get(oid) API (used
       normally only for debugging), it is added to _cache.
 
-    All objects in _cache and _added are also present by oid in
-    _jcr_paths. More oids can also be present there if the _cache has
-    been garbage collected of old ghosts. These additional oids don't
-    matter because they refer to unreachable objects; when they become
-    really unreachable from the storage it will send an invalidation
-    message for them, and they will be purged from _cache and _jcr_paths
-    if needed.
-
     An object in the _cache can be invalidated and turned into a ghost
     by a cache reduction (or manually). At its next access it will be
     refetched from storage through setstate(obj).
 
     At commit time, all objects in _added or all modified or deleted
-    objects are written to storage by walking the _jcr_delta tree.
-    Objects in _added are moved to the permanent _cache with their new
-    permanent oid decided by the storage.
+    objects are written to storage. Objects in _added are moved to the
+    permanent _cache with their new permanent oid decided by the
+    storage.
 
     JCR UUID
     --------
 
     JCR UUIDs become known in four ways:
 
-    - the root, which has a known JCR path,
+    - the root,
 
-    - when a UUID is retrieved as the child of a node, then the JCR path
-      is known if the current one is known,
+    - when a UUID is retrieved as the child of a node,
 
-    - when a UUID is retrived as the parent of a node, then the JCR path
-      is known if the current one is known,
+    - when a UUID is retrived as the parent of a node,
 
-    - when get() is called with an explicit oid, in this case the JCR
-      path is not known and has to be asked to the storage.
-
+    - when get() is called with an explicit oid.
 
     """
-
-    # Store the current tree delta, used to know in what order to
-    # send modifications to the JCR; the paths are JCR paths. When
-    # same-name siblings are involved they must *all* be impacted.
-    _jcr_delta = None
 
     # Temporary UUID counter for new objects. At commit time, their
     # UUID is replaced with the real one.
@@ -168,25 +172,20 @@ class Connection(ZODBConnection):
         # call to be put in their apropriate object. Removed after set.
         self._pending_states = {}
 
-        # Oid that is being just being marked _p_changed for which
-        # we don't want register() to freak out
-        self._pending_register = None
+        # Mapping of oid to a set of changed properties
+        self._registered = {}
 
-        # Map of oid -> path for all objects in _cache or in _added.
-        # Paths and are used to fill _jcr_delta when an operation is done.
-        # All objects with an oid are in this map. This means that when
-        # setstate is called, we know we have a path for them.
-        # A INonPersistent object also has a path (those of its children
-        # for ListProperty (but it's not present in the _jcr_delta)).
-        self._oid_to_path = {}
-        # Inverse map, used when the delta is read
-        self._path_to_oid = {}
+        # Oid that is being just being marked _p_changed for which
+        # we don't want register() to freak out.
+        self._manual_register = None
+
+        # _modified and _created are filled at savepoint time
 
         # oids of modified objects (to be invalidated on an abort).
-        self._modified = []
+        self._modified = set()
         # oids of created objects (to be removed from cache on abort).
         # XXX differs from ZODB, where it's a dict oid->flag
-        self._creating = []
+        self._created = set()
 
 
     # Capsule API
@@ -200,108 +199,105 @@ class Connection(ZODBConnection):
     ##################################################
     # Add/Modify/Remove
 
-    def _doDelta(self, op, path, info=None):
-        """Add a delta to the JCR tree delta to replay at commit time.
+    def setProperty(self, obj, name, value):
+        """Set a property on an object.
         """
-        if self._jcr_delta is None:
-            self._jcr_delta = FullTreeDelta()
-        self._jcr_delta.add(op, path, info)
-
-    def _findPropertyNodeType(self, name, parent):
-        """Find the node type of a given child in a parent.
-
-        Returns a string, or None for pseudo-types (ListProperty).
-        """
-        node_type = parent._type_name
-        if node_type is None:
-            raise ValueError("Object must have a type")
-        schema = self.getSchemaManager().getSchema(node_type)
-        field = schema.get(name)
-        if field is None:
-            raise ValueError("Object %r has no property %r"%(node_type, name))
-        # Find the child node type
-        if IObjectPropertyField.providedBy(field):
-            return field.schema.getName()
-        elif IListPropertyField.providedBy(field):
-            return None
-        else:
-            raise ValueError("Unknown node type for field %r" % field)
-
-    def setSimpleProperty(self, name, obj):
-        """Note that a simple property was changed.
-        """
-        if not IObjectBase.providedBy(obj):
-            raise ValueError("Can only set a property on ObjectBase")
-        if obj._p_jar is None:
-            raise InvalidObjectReference("Object has no connection", obj)
-        if obj._p_jar is not self:
-            raise InvalidObjectReference("Object in another connection", obj)
+        assert IObjectBase.providedBy(obj)
+        assert obj._p_jar is self
         oid = obj._p_oid
-        assert oid is not None, ("Object has no _p_oid", obj)
+        assert oid is not None
 
-        try:
-            self._pending_register = oid
-            obj._p_changed = True
-        finally:
-            self._pending_register = None
+        if value is None:
+            if name in obj._props:
+                # Remove
+                old = obj._props[name]
+                del obj._props[name]
+                if IProperty.providedBy(old):
+                    raise NotImplementedError
+                else:
+                    self._prop_changed(obj, name)
+        else:
+            old = obj._props.get(name, _MARKER)
+            if old is not _MARKER:
+                # Fast case: there is a previous value, update it
+                if IProperty.providedBy(old):
+                    if IProperty.providedBy(value):
+                        # Are we setting the same property?
+                        if old._p_oid == value._p_oid:
+                            raise NotImplementedError
+                        else:
+                            raise ValueError("Cannot replace property %r "
+                                             "with %r" % (old, value))
+                    else:
+                        old.setPythonValue(value)
+                else:
+                    # Replacing a non-IProperty, assume the new one is the same
+                    obj._props[name] = value
+                    self._prop_changed(obj, name)
+            else:
+                # No previous value, create one
+                field = obj.getSchema()[name]
+                if ICapsuleField.providedBy(field):
+                    if IProperty.providedBy(value):
+                        # XXX do we allow this?
+                        raise ValueError("Must create %r from simple types"
+                                         % name)
+                    if IObjectPropertyField.providedBy(field):
+                        prop = ObjectProperty(name, field.schema)
+                    elif IListPropertyField.providedBy(field):
+                        prop = ListProperty(name, field.value_type.schema)
+                    else:
+                        raise ValueError("Unknown property: %r" % field)
+                    self._addNode(prop, obj)
+                    prop.setPythonValue(value)
+                    obj._props[name] = prop
+                else:
+                    # Setting a new non-IProperty
+                    obj._props[name] = value
+                    self._prop_changed(obj, name)
 
-        jcr_path = self._oid_to_path[oid]
-        self._doDelta(MODIFY, jcr_path, {name: True})
-
-    def setComplexProperty(self, name, parent):
-        """Set a complex property.
-
-        If the property already existed, it is overwritten (complex
-        lists are emptied) and its oid is reused.
-
-        Returns the property (newly created or not).
+    def createItem(self, obj):
+        """Create an item in a ListProperty.
         """
-        node_type = self._findPropertyNodeType(name, parent)
+        # assert providedBy for obj? XXX
+        assert obj._p_jar is self
+        oid = obj._p_oid
+        assert oid is not None
+        assert '/' in oid
+        uuid, name = oid.split('/', 1)
 
-        obj = parent.getProperty(name, None)
-        if obj is None:
-            # No previous property, create one
-            obj = self._addNode(name, parent, node_type)
+        node = ObjectProperty(name, obj.getValueSchema())
+        self._addNode(node, obj)
+        return node
 
-    def _addNode(self, name, parent, node_type):
-        """Add a new JCR node and assign it an oid.
-
-        Does not actually talk to the JCR, but uses a temporary oid that
-        will be turned into the final one at commit time.
-
-        If a node already existed with the same name, it is destroyed.
-
-        Returns the newly created object.
+    def createChild(self, parent, name, node_type):
+        """Create a child in a Document.
         """
-        if parent is None:
-            raise ValueError("No parent provided")
-        if parent._p_jar is None:
-            raise InvalidObjectReference("Parent has no connection")
-        if parent._p_jar is not self:
-            raise InvalidObjectReference("Parent is in another connection",
-                                         parent)
+        # assert providedBy for parent? XXX
+        assert parent._p_jar is self
         poid = parent._p_oid
-        assert poid is not None, ("Parent has no _p_oid", parent)
+        assert poid is not None
 
-        # Make a temporary oid
-        oid = 'T%d' % self._next_tmp_uuid
-        self._next_tmp_uuid += 1
-
-        # Build and register the object
+        schema = self._db.getSchema(node_type)
         klass = self._db.getClass(node_type)
-        obj = klass.__new__(klass)
+        child = klass(name, schema)
+        self._addNode(child, parent)
+        return child
+
+    def _addNode(self, obj, parent):
+        """Add a created node, give it an oid and register it.
+        """
+        if IListProperty.providedBy(obj):
+            oid = parent._p_oid + '/' + obj.getName()
+        else:
+            # Make a temporary oid
+            oid = 'T%d' % self._next_tmp_uuid
+            self._next_tmp_uuid += 1
+        # Create the node
+        obj.__parent__ = parent
         obj._p_oid = oid
         obj._p_jar = self
-        jcr_path = self._oid_to_path[poid] + (name,)
-        self._oid_to_path[oid] = jcr_path
-        self._path_to_oid[jcr_path] = oid
-        self._register(obj)
         self._added[oid] = obj
-
-        # Add to current delta
-        self._doDelta(ADD, jcr_path)
-
-        return obj
 
     def register(self, obj):
         """Register obj as modified.
@@ -313,42 +309,41 @@ class Connection(ZODBConnection):
         objects modified directly without going to the Capsule API,
         which is an error.
         """
+        assert obj._p_jar is self
         oid = obj._p_oid
-        assert obj._p_jar is self, ("Object has bad _p_jar", obj)
-        assert oid is not None, ("Object has no _p_oid", obj)
+        assert oid is not None
+        assert oid not in self._registered
 
         if oid in self._added:
-            # Was already added by hand
+            # Modifying a just-created object
             return
 
-        self._register(obj)
-
-        # Know when internal code manually marks _p_changed = True
-        # when we don't want __unknown__ flagged.
-        if self._pending_register == oid:
-            return
-
-        # Add to current delta
-        if '/' not in oid:
-            jcr_path = self._oid_to_path[oid]
-            self._doDelta(MODIFY, jcr_path, {'__unknown__': True})
-            import traceback; traceback.print_stack()
-
-    def _register(self, obj):
-        # XXX needs also to be called by add() or equivalents
         if self._needs_to_join:
             self.transaction_manager.get().join(self)
             self._needs_to_join = False
-        self._registered_objects.append(obj)
 
+        self._registered[oid] = set()
+
+        if self._manual_register != oid:
+            print 'XXX illegal direct attr modification of', repr(obj)
+
+    def _prop_changed(self, obj, name):
+        """Register a property name as changed.
+        """
+        oid = obj._p_oid
+
+        if oid in self._added:
+            return
+
+        try:
+            self._manual_register = oid
+            obj._p_changed = True
+        finally:
+            self._manual_register = None
+
+        self._registered[oid].add(name)
 
     def remove(self, obj):
-        raise NotImplementedError
-
-    def savepoint(self):
-        # Shouldn't be there at all to not support savepoints,
-        # but our base class already has this method.
-        # XXX don't inherit from ZODBConnection at all!
         raise NotImplementedError
 
     ##################################################
@@ -365,45 +360,9 @@ class Connection(ZODBConnection):
         This is half the 'prepare' phase of the two-phase commit, where
         the bulk of the objects are committed.
         """
-        self.save()
-        self._jcr_delta = None
+        self.savepoint()
+        # XXX send save/commit command
 
-        return
-
-
-        # XXX _added_during_commit?
-        for obj in self._registered_objects:
-            oid = obj._p_oid
-            assert oid is not None, "Object %r has no oid" % (obj,)
-            assert obj._p_jar is self
-
-            if oid in self._conflicts:
-                # XXX
-                raise ReadConflictError(object=obj)
-
-            if oid in self._added:
-                pass
-            elif obj._p_changed:
-                # XXX check _invalidated?
-                self._modified.append(oid)
-            else:
-                # object was modified then un-changed by resetting _p_changed
-                continue
-
-            klass = obj.__class__
-
-            if klass is Document: # XXX use interfaces
-                state = self._saveObjectState(obj, full_document=True)
-            elif klass is Children:
-                state = self._saveChildrenState(obj)
-            elif klass is ListProperty:
-                state = self._saveListPropertyState(obj)
-            elif klass is ObjectProperty:
-                state = self._saveObjectState(obj)
-            else:
-                raise ValueError("Unknown class %s" % klass.__name__)
-
-            obj._p_changed = False
 
     def tpc_vote(self, txn):
         """Verify that the transaction can be committed.
@@ -428,21 +387,22 @@ class Connection(ZODBConnection):
 
         Called for explicit transaction aborts.
 
-        Called before tpc_abort in two-phase commit if this resource
-        manager has not voted.
+        Also called before tpc_abort in two-phase commit if this
+        resource manager has not voted.
         """
-        for obj in self._registered_objects:
-            oid = obj._p_oid
-            if oid in self._added:
-                # Added, so not in cache yet; remove it
-                print 'XXX ABORT unadd', oid
-                del self._added[oid]
-                del obj._p_jar
-                del obj._p_oid
-            else:
-                # Normally modified, invalidate it
-                #print 'XXX ABORT inval', oid
-                self._cache.invalidate(oid)
+        for oid in self._modified:
+            self._cache.invalidate(oid)
+        for oid in self._registered:
+            self._cache.invalidate(oid)
+        for oid, obj in self._added.iteritems():
+            del self._added[oid]
+            del obj._p_jar
+            del obj._p_oid
+        for oid in self._created:
+            obj = self._cache[oid]
+            del self._cache[oid]
+            del obj._p_jar
+            del obj._p_oid
 
         self._tpc_cleanup()
 
@@ -450,45 +410,24 @@ class Connection(ZODBConnection):
         """Abort a transaction.
 
         Called when a two-phase commit aborts.
+
+        Invalidates objects savepointed.
         """
-        # Invalidate modified objects seen by a commit
-        for oid in self._modified:
-            print 'XXX TPCABORT inval', oid
-        self._cache.invalidate(self._modified)
-
-        # Remove created objects from the cache
-        for oid in self._creating:
-            obj = self._cache.get(oid)
-            if obj is not None:
-                print 'XXX TPCABORT decache', oid
-                del self._cache[oid]
-                jcr_path = self._oid_to_path[oid]
-                del self._oid_to_path[oid]
-                del self._path_to_oid[jcr_path]
-                del obj._p_jar
-                del obj._p_oid
-
-        # Cleanup other added objects that haven't made it to _creating
-        while self._added:
-            oid, obj = self._added.popitem()
-            print 'XXX TPCABORT unadd', oid
-            del obj._p_oid
-            del obj._p_jar
-
-        self._tpc_cleanup()
+        self.abort(txn)
 
     def _tpc_cleanup(self):
         """Cleanup after finish or abort.
         """
-        self._modified = []
-        self._creating = []
+        self._modified = set()
+        self._created = set()
 
         self._conflicts.clear()
         #if not self._synch:
         #    self._flush_invalidations() # XXX invalidations
+
         self._needs_to_join = True
-        self._registered_objects = []
-        self._jcr_delta = None
+        self._registered = {}
+        self._added = {}
 
     ##################################################
     # Export/Import
@@ -510,19 +449,18 @@ class Connection(ZODBConnection):
         """
         return Root(self)
 
-    def get(self, oid):
+    def get(self, oid, node_type=None):
         """Get the persistent object with a given oid.
 
         Returns the object from the cache if it's there. Otherwise
-        returns a ghost, in which case a costly round-trip to the
-        storage has to be made to get class and path information. This
-        only happens for objects not accessed recently and evicted from
-        the cache.
+        returns a ghost.
+
+        If a ghost has to be built and node_type is passed, no
+        round-trip to the server is needed to get class information.
         """
         obj = self._getFromCache(oid)
         if obj is None:
-            klass, jcr_path = self._getClassAndPath(oid)
-            obj = self._makeGhost(oid, klass, jcr_path)
+            obj = self._makeGhost(oid, node_type)
         return obj
 
     __getitem__ = get
@@ -537,55 +475,25 @@ class Connection(ZODBConnection):
             obj = self._added.get(oid)
         return obj
 
-    def _getTyped(self, oid, node_type, jcr_path):
-        """Get an object from an oid from the caches, or build a ghost.
-
-        The ghost is built according to node_type and with a jcr_path.
-        """
-        obj = self._getFromCache(oid)
-        if obj is None:
-            # Get a ghost
-            klass = self._getClass(oid, node_type)
-            obj = self._makeGhost(oid, klass, jcr_path)
-        return obj
-
-    def _makeGhost(self, oid, klass, jcr_path):
-        """Create a ghost object for a given oid, class and JCR path.
+    def _makeGhost(self, oid, node_type):
+        """Create a ghost object for a given oid and node type.
 
         The ghost is then put in the cache.
+
+        If node_type is None, the storage will be queried.
         """
+        if '/' in oid:
+            klass = ListProperty
+        else:
+            if node_type is None:
+                node_type = self.controller.getNodeType(oid)
+            klass = self._db.getClass(node_type)
         obj = klass.__new__(klass)
         obj._p_oid = oid
         obj._p_jar = self
         obj._p_deactivate() # Switch to ghost
         self._cache[oid] = obj
-        self._oid_to_path[oid] = jcr_path
-        self._path_to_oid[jcr_path] = oid
         return obj
-
-    def _getClass(self, oid, node_type):
-        """Find the class for this oid given its node type.
-        """
-        if '/' in oid:
-            return ListProperty
-        return self._db.getClass(node_type)
-
-    def _getClassAndPath(self, oid):
-        """Find the class and path for a totally unknown oid.
-
-        Asks the storage for needed information.
-        """
-        if '/' in oid:
-            uuid, name = oid.split('/', 1)
-        else:
-            uuid = oid
-        node_type, jcr_path = self.controller.getNodeTypeAndPath(uuid)
-        if '/' in oid:
-            klass = ListProperty
-        else:
-            klass = self._db.getClass(node_type)
-        return klass, jcr_path
-
 
     def setstate(self, obj):
         """Set the state on an object.
@@ -625,7 +533,7 @@ class Connection(ZODBConnection):
             # State was already loaded, needs to be set through a
             # setstate() call.
             state = self._pending_states.pop(oid)
-        elif klass is Document: # XXX use interfaces
+        elif issubclass(klass, Document): # or use interfaces?
             state = self._loadObjectState(oid, full_document=True)
         elif klass is Children:
             state = self._loadChildrenState(oid)
@@ -634,23 +542,18 @@ class Connection(ZODBConnection):
         elif klass is ObjectProperty:
             state = self._loadObjectState(oid)
         else:
-            raise ValueError("Unknown class %s" % klass.__name__)
+            raise ValueError("Unknown class %s.%s" %
+                             (klass.__module__, klass.__name__))
 
         # Put state on the object
         obj.__setstate__(state)
 
 
-    def _isMultiple(self, node_type, name):
-        """Check if a child name in a type has same-name siblings.
-        """
-        return self._db.isMultiple(node_type, name)
-
-
     def _loadObjectState(self, uuid, full_document=False):
         """Load the state of a Node from the JCR.
 
-        This Node represents either an object (complex property) or a
-        full document with children.
+        This Node represents either an IObjectBase or a full document
+        with children (IDocument).
 
         Property values are also loaded if they're cheap (no Binary).
         (The decision is made by the server.)
@@ -660,21 +563,14 @@ class Connection(ZODBConnection):
         assert deferred == [], deferred # XXX for now
 
         # This object (we're setting its state so it should be in cache)
-        if self._getFromCache(uuid) is None: # XXX
-            # XXX check that
-            print 'XXX object loaded but not in cache', uuid
-        this = self.get(uuid)
-        jcr_path = self._oid_to_path[uuid]
+        this = self._getFromCache(uuid)
+        assert this is not None, ("Object loaded but not in cache", uuid)
 
-        # Name, parent
+        # Parent
         if parent_uuid is not None:
             parent = self.get(parent_uuid)
         else:
             parent = None
-        state = {
-            '__name__': name,
-            '__parent__': parent,
-            }
 
         # JCR properties
         prop_map = {}
@@ -682,46 +578,62 @@ class Connection(ZODBConnection):
         for prop_name, prop_value in properties:
             if prop_name == 'jcr:primaryType':
                 type_name = prop_value
-            prop_map[prop_name] = prop_value
-        state['_props'] = prop_map
-        state['_type_name'] = type_name
+                # don't put jcr:primaryType in properties
+            else:
+                prop_map[prop_name] = prop_value
+        schema = self._db.getSchema(type_name)
 
         # JCR children
+        children = None
         toskip = set()
         for child_name, child_uuid, child_type in jcrchildren:
-            child_jcr_path = jcr_path + (child_name,)
             # Check if we have a ListProperty to create
-            if (child_name not in prop_map and
-                self._isMultiple(type_name, child_name)):
-                oid = uuid+'/'+child_name
-                lprop = self._getTyped(oid, '', child_jcr_path) # type unused
-                if lprop._p_changed is None:
-                    # Ghost, set state by indirect call to setstate()
-                    lprop_state = {
-                        '__name__': child_name,
-                        '__parent__': this,
-                        '_values': [],
-                        }
-                    self._pending_states[oid] = lprop_state
-                    lprop._p_activate()
-                else:
-                    # We alreay have a non-ghost for the list property,
-                    # ignore these children because their info is
-                    # already taken care of.
-                    toskip.add(child_name)
-                prop_map[child_name] = lprop
+            if child_name not in prop_map:
+                field = schema.get(child_name)
+                if IListPropertyField.providedBy(field):
+                    oid = uuid + '/' + child_name
+                    lprop = self.get(oid) # type not needed
+                    if lprop._p_changed is None:
+                        # Ghost, set state by indirect call to setstate()
+                        lprop_state = {
+                            '__name__': child_name,
+                            '__parent__': this,
+                            '_value_schema': field.value_type.schema,
+                            '_values': [],
+                            }
+                        self._pending_states[oid] = lprop_state
+                        lprop._p_activate()
+                    else:
+                        # We alreay have a non-ghost for the list property,
+                        # ignore these children because their info is
+                        # already taken care of.
+                        toskip.add(child_name)
+                    prop_map[child_name] = lprop
             if child_name in toskip:
                 continue
             # Get child
-            child = self._getTyped(child_uuid, child_type, child_jcr_path)
-            if child_name == 'ecm:children' and full_document:
-                state['_children'] = child
+            child = self.get(child_uuid, node_type=child_type)
+            if child_name == 'ecm:children':
+                if full_document:
+                    children = child
             elif child_name in prop_map:
                 # Multiple type, add to ListProperty
                 prop_map[child_name]._values.append(child)
             else:
                 # Simple type
                 prop_map[child_name] = child
+
+        # State
+        state = {
+            '__name__': name,
+            '__parent__': parent,
+            '_schema': schema,
+            '_props': prop_map,
+            }
+        if full_document:
+            if children is None:
+                children = Children() # XXX FIXME should be created normally!
+            state['_children'] = children
 
         return state
 
@@ -732,31 +644,28 @@ class Connection(ZODBConnection):
         name, parent_uuid, jcrchildren, properties, deferred = states[uuid]
         assert deferred == [], deferred # XXX for now
 
-        # This object
-        jcr_path = self._oid_to_path[uuid]
-
-        # Name, parent
+        # Parent
         if parent_uuid is not None:
             parent = self.get(parent_uuid)
         else:
             parent = None
-        state = {
-            '__name__': name,
-            '__parent__': parent,
-            }
 
         # JCR Children
         child_map = {}
         order = [] # XXX check if type is ordered in its schema
         for child_name, child_uuid, child_type in jcrchildren:
-            child_jcr_path = jcr_path + (child_name,)
-            child = self._getTyped(child_uuid, child_type, child_jcr_path)
+            child = self.get(child_uuid, node_type=child_type)
             child_map[child_name] = child
             order.append(child_name)
-        state['_children'] = child_map
-        state['_order'] = order
         # XXX _lazy, _missing
 
+        # State
+        state = {
+            '__name__': name, # XXX name is actually constant, and in class
+            '__parent__': parent,
+            '_children': child_map,
+            '_order': order,
+            }
         return state
 
     def _loadListPropertyState(self, oid):
@@ -768,37 +677,42 @@ class Connection(ZODBConnection):
         name, parent_uuid, jcrchildren, properties, deferred = states[uuid]
         assert deferred == [], deferred # XXX for now
 
-        # Get parent and path
+        # Parent
         parent = self.get(uuid)
-        # All children have the same jcr path, which is also ours
-        child_jcr_path = self._oid_to_path[oid]
 
-        values = []
-        state = {
-            '__name__': name,
-            '__parent__': parent,
-            '_values': values,
-            }
+        # Properties to get type_name and schema
+        type_name = 'ecm:UnknownType' # XXX
+        for n, v in properties:
+            if n == 'jcr:primaryType':
+                type_name = v
+                break
+        schema = self._db.getSchema(type_name)
+        value_schema = schema[prop_name].value_type.schema
 
         # JCR Children
+        values = []
         for child_name, child_uuid, child_type in jcrchildren:
             if child_name != prop_name:
                 # Only keep the wanted children # XXX optimize this
                 continue
-            child = self._getTyped(child_uuid, child_type, child_jcr_path)
+            child = self.get(child_uuid, node_type=child_type)
             values.append(child)
+
+        # State
+        state = {
+            '__name__': name,
+            '__parent__': parent,
+            '_value_schema': value_schema,
+            '_values': values,
+            }
 
         return state
 
     ##################################################
     # Save
 
-    def save(self):
-        self._save()
-        self._jcr_delta = None
-
-    def _save(self):
-        """Send the current tree delta to the JCR, and do a JCR save.
+    def savepoint(self):
+        """Send the current modifications to the JCR, and do a JCR save.
 
         This operation is needed before a commit, or before any JCR
         operation that works on the persistently saved data, like
@@ -806,44 +720,69 @@ class Connection(ZODBConnection):
         """
         commands = self._saveCommands()
         map = self.controller.sendCommands(commands)
-        # remplace temporary oids with final ones
 
+        # Replace temporary oids with final ones, and put new objects in cache
+        for toid, obj in self._added.iteritems():
+            if '/' in toid:
+                continue #XXX
+            oid = map[toid]
+            obj._p_oid = oid
+            obj._p_changed = False
+            self._cache[oid] = obj
+            self._created.add(oid)
 
+        # Remember modified objects
+        for oid in self._registered.iterkeys():
+            obj = self._getFromCache(oid)
+            obj._p_changed = False
+            self._modified.add(oid)
+
+        self._added = {}
+        self._registered = {}
+
+        return NoRollbackSavepoint()
 
     def _saveCommands(self):
-        """Generator returning the commands to save the tree delta.
+        """Generator returning the commands to save the modifications.
 
         Commands are a tuple, which can be:
-        - 'add', token, path, node_type, props_mapping
+        - 'add', parent_uuid, name, node_type, props_mapping, token
         - 'modify', uuid, props_mapping
-        - 'remove', uuid
+        - 'remove', uuid XXX
+        - 'order' XXX
         """
-        for op, path, info in self._jcr_delta:
-            oid = self._path_to_oid[path]
-            if op == ADD:
-                # oid is a temporary one, we use it as a token
-                obj = self._getFromCache(oid)
-                assert obj is not None, ("ADD missing from cache", oid)
-                node_type = obj._type_name
-                props = self._collectProperties(info, obj, skip_none=True)
-                command = ('add', oid, path, node_type, props)
-            elif op == MODIFY:
-                obj = self._getFromCache(oid)
-                assert obj is not None, ("ADD missing from cache", oid)
-                props = self._collectProperties(info, obj)
-                command = ('modify', oid, props)
-            elif op == REMOVE:
-                command = ('remove', oid)
+        for oid, obj in self._added.iteritems():
+            # XXX ordering for ListProperty children! XXXXXXX
+            if '/' in oid:
+                # ListProperty, no real existence in the JCR
+                continue
+            poid = obj.__parent__._p_oid
+            if '/' in poid:
+                # Parent is a ListProperty, add to its base UUID
+                puuid, name = poid.split('/', 1)
+            else:
+                puuid = poid
+                name = obj.__name__
+            node_type = obj.getSchema().getName() # fails for ecm:children!XXX
+            props = self._collectSimpleProperties(obj)
+            command = ('add', puuid, name, node_type, props, oid)
+            yield command
+        for oid, keys in self._registered.iteritems():
+            obj = self._getFromCache(oid)
+            props = self._collectProperties(obj, keys)
+            command = ('modify', oid, props)
             yield command
 
-    def _collectProperties(self, info, obj, skip_none=False):
+    def _collectProperties(self, obj, keys, skip_none=False):
         """Collect properties to send in a command.
+
+        ``keys`` is a set of property names.
         """
         props = {}
-        if '__unknown__' in info:
-            raise ValueError("info for %r with unknown %r" % (obj, info))
-        for key in info.iterkeys():
-            value = obj.getProperty(key, None)
+        if '__unknown__' in keys:
+            raise ValueError("info for %r with unknown %r" % (obj, keys))
+        for key in keys:
+            value = obj._props.get(key, None)
             if value is None and skip_none:
                 continue
             assert not isinstance(value, Persistent), ("Persistent "
@@ -851,37 +790,19 @@ class Connection(ZODBConnection):
             props[key] = value
         return props
 
-
-    def _saveObjectState(self, obj, full_document=False):
-        """Save the state of an object to a JCR Node.
+    def _collectSimpleProperties(self, obj):
+        """Get the simple properties from an object.
         """
-        #if full_document is True:
-        #    raise NotImplementedError
-
-        uuid = obj._p_oid
-
-        props = []
-        for name in obj._props_changed or ():
-            # Find all non-Persistent changed props
-            value = obj._props[name]
-            props.append((name, value))
-        if props:
-            self.controller.setNodeState(uuid, props)
-
-        # XXX treat added/removed children and complex props
+        props = {}
+        for key, value in obj._props.iteritems():
+            if IProperty.providedBy(value):
+                continue
+            assert not isinstance(value, Persistent), ("Persistent "
+                "value %r in property %r" % (value, key))
+            props[key] = value
+        return props
 
 
-
-
-
-        # Clear changed attributes
-        try: del obj._props_added
-        except AttributeError: pass
-        try: del obj._props_changed
-        except AttributeError: pass
-
-    def _saveChildrenState(self, obj):
-        raise NotImplementedError
-
-    def _saveListPropertyState(self, obj):
-        raise NotImplementedError
+class NoRollbackSavepoint(object):
+    def rollback(self):
+        raise TypeError("Savepoints unsupported")

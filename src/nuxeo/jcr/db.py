@@ -21,12 +21,14 @@ from ZODB.DB import DB as ZODBDB
 from zope.schema.interfaces import IList
 from nuxeo.capsule.base import Children
 from nuxeo.capsule.interfaces import IDocument
+from nuxeo.capsule.interfaces import IWorkspace
 from nuxeo.capsule.interfaces import IObjectBase
 from nuxeo.jcr.schema import SchemaManager
 from nuxeo.jcr.impl import Document
+from nuxeo.jcr.impl import Workspace
 from nuxeo.jcr.impl import ObjectProperty
 from nuxeo.jcr.connection import Connection
-from nuxeo.jcr.protocol import JCRController
+from nuxeo.jcr.controller import JCRController
 
 class DB(ZODBDB):
     """Capsule JCR DB
@@ -93,36 +95,33 @@ class DB(ZODBDB):
 
         # Set classes for document/schema nodes
         for name, schema in sm.getSchemas().iteritems():
-            if schema.isOrExtends(IDocument):
+            if schema.isOrExtends(IWorkspace):
+                sm.setClass(name, Workspace)
+            elif schema.isOrExtends(IDocument):
                 sm.setClass(name, Document)
             elif schema.isOrExtends(IObjectBase):
                 sm.setClass(name, ObjectProperty)
 
-        # Other classes used
+        # Children
         sm.setClass('ecmnt:children', Children)
-        sm.setClass('rep:root', Document)
 
         return sm
 
+    def getSchema(self, node_type):
+        """Get the schema for a given JCR node type.
+        """
+        schema = self._schema_manager.getSchema(node_type, None)
+        if schema is None:
+            raise ValueError("Unknown node type: %r" % node_type)
+        return schema
 
     def getClass(self, node_type):
         """Get the class for a given JCR node type.
         """
         klass = self._schema_manager.getClass(node_type, None)
-        if klass is not None:
-            return klass
-        raise ValueError("Unknown node type: %r" % node_type)
-
-    def isMultiple(self, node_type, name):
-        """Check if a node type has multiple siblings `name` and must
-        therefore be represented as a list.
-        """
-        schema = self._schema_manager.getSchema(node_type, None)
-        if schema is None:
-            multiple = False
-        else:
-            multiple = IList.providedBy(schema[name])
-        return multiple
+        if klass is None:
+            raise ValueError("Unknown node type: %r" % node_type)
+        return klass
 
 
 class NoStorage(object):

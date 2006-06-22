@@ -30,7 +30,7 @@ Let's see what types and schemas are available::
     >>> sorted(conn.getSchemaManager().getSchemas().keys())
     ... #doctest: +NORMALIZE_WHITESPACE
     ['ecmst:dublincore', 'ecmst:name', 'ecmst:tripreport',
-     'tripreport']
+     'rep:root', 'tripreport']
 
 We'll add an object in the fake JCR through a back-channel::
 
@@ -50,8 +50,10 @@ Then ask the connection for the root::
 
     >>> root = conn.get(root_uuid)
     >>> root
-    <Document at />
+    <Workspace at />
     >>> root._p_oid is root_uuid
+    True
+    >>> root.getUUID() is root_uuid
     True
 
 There is a child 'atrip', which is a ghost initially::
@@ -77,9 +79,7 @@ There's a complex property 'name'::
     >>> name
     <ObjectProperty 'name' of <Document at /ecm:children/atrip>>
     >>> sorted(name.getProperties().items())
-    ... #doctest: +NORMALIZE_WHITESPACE
-    [('first', u'Jack'), ('jcr:primaryType', 'ecmst:name'),
-     ('last', u'Bauer')]
+    [('first', u'Jack'), ('last', u'Bauer')]
 
 There is also a list property of friends::
 
@@ -93,13 +93,9 @@ There is also a list property of friends::
     [<ObjectProperty 'friends' of <Document at /ecm:children/atrip>>,
      <ObjectProperty 'friends' of <Document at /ecm:children/atrip>>]
     >>> sorted(friends[0].getProperties().items())
-    ... #doctest: +NORMALIZE_WHITESPACE
-    [('first', u'Chloe'), ('jcr:primaryType', 'ecmst:name'),
-     ('last', u"O'Brian")]
+    [('first', u'Chloe'), ('last', u"O'Brian")]
     >>> sorted(friends[1].getProperties().items())
-    ... #doctest: +NORMALIZE_WHITESPACE
-    [('first', u'David'), ('jcr:primaryType', 'ecmst:name'),
-     ('last', u'Palmer')]
+    [('first', u'David'), ('last', u'Palmer')]
 
 We'll check that everything gets reloaded correctly from the storage if
 the persistent objects are ghostified (by the pickle cache being
@@ -178,12 +174,12 @@ The property is still there, even if we deactivate the object::
 Let's do this with a property that didn't exist before::
 
     >>> txn = tm.begin()
-    >>> trip.setProperty('description', u"To be done")
+    >>> trip.setProperty('dc:description', u"To be done")
     >>> tm.commit()
-    >>> trip.getProperty('description')
+    >>> trip.getProperty('dc:description')
     u'To be done'
     >>> trip._p_deactivate()
-    >>> trip.getProperty('description')
+    >>> trip.getProperty('dc:description')
     u'To be done'
 
 The same happens if we change a complex property::
@@ -191,9 +187,7 @@ The same happens if we change a complex property::
     >>> txn = tm.begin()
     >>> name = trip.getProperty('name')
     >>> sorted(name.getProperties().items())
-    ... #doctest: +NORMALIZE_WHITESPACE
-    [('first', u'Jack'), ('jcr:primaryType', 'ecmst:name'),
-     ('last', u'Bauer')]
+    [('first', u'Jack'), ('last', u'Bauer')]
     >>> name.setProperty('last', u"Shephard")
     >>> tm.commit()
     >>> name.getProperty('last')
@@ -201,20 +195,14 @@ The same happens if we change a complex property::
     >>> trip.getProperty('name') is name
     True
     >>> sorted(name.getProperties().items())
-    ... #doctest: +NORMALIZE_WHITESPACE
-    [('first', u'Jack'), ('jcr:primaryType', 'ecmst:name'),
-     ('last', u'Shephard')]
+    [('first', u'Jack'), ('last', u'Shephard')]
 
-Adding complex properties
--------------------------
-
-Now let's add a complex property::
+We can also add a complex property::
 
     >>> txn = tm.begin()
-    >>> mother = trip.addProperty('mother')
+    >>> trip.setProperty('mother', {'first': u'Number', 'last': u'5'})
+    >>> mother = trip.getProperty('mother')
     >>> mother
-    <ObjectProperty mother of <Document at /ecm:children/atrip>>
+    <ObjectProperty 'mother' of <Document at /ecm:children/atrip>>
     >>> sorted(mother.getProperties().items())
-    ... #doctest: +NORMALIZE_WHITESPACE
-    [('first', u'Jack'), ('jcr:primaryType', 'ecmst:name'),
-     ('last', u'Bauer')]
+    [('first', u'Number'), ('last', u'5')]

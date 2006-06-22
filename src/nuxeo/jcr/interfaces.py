@@ -19,15 +19,6 @@
 from zope.interface import Interface
 
 
-class INonPersistent(Interface):
-    """Marker interface for objects deriving from Persistent but
-    that are not actually written to persistent storage.
-
-    These objects (like ListProperty) are there to have regular
-    high-level APIs and adapt them to the low-level storage APIs.
-    """
-
-
 class ProtocolError(ValueError):
     pass
 
@@ -102,7 +93,7 @@ class IJCRController(Interface):
         """Send a sequence of modification commands to the JCR.
 
         `commands` is an iterable returning tuples of the form:
-        - ADD, token, path, node_type, props_mapping
+        - ADD, parent_uuid, name, node_type, props_mapping, token
         - MODIFY, uuid, props_mapping
         - REMOVE, uuid
 

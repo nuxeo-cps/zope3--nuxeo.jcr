@@ -45,7 +45,7 @@ class SchemaManager(BaseSchemaManager):
             iface = interfaces[node_type]
             if not iface.isOrExtends(IObjectBase):
                 continue
-            self.addSchema(iface)
+            self.addSchema(node_type, iface)
 
     def getInterface(self, name):
         """Return the interface registered for a name.

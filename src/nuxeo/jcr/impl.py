@@ -23,9 +23,9 @@ from persistent import Persistent
 import zope.interface
 from nuxeo.capsule.base import ObjectBase as CapsuleObjectBase
 from nuxeo.capsule.base import Document as CapsuleDocument
+from nuxeo.capsule.base import Workspace as CapsuleWorkspace
 from nuxeo.capsule.base import ListProperty as CapsuleListProperty
 from nuxeo.capsule.base import ObjectProperty as CapsuleObjectProperty
-from nuxeo.jcr.interfaces import INonPersistent
 
 
 class ObjectBase(CapsuleObjectBase):
@@ -35,25 +35,13 @@ class ObjectBase(CapsuleObjectBase):
     """
 
     def setProperty(self, name, value):
-        """See `nuxeo.capsule.interfaces.IObject`
+        """See `nuxeo.capsule.interfaces.IObjectBase`
         """
-        if isinstance(value, Persistent):
-            # If a new persistent property is added, it has to be created
-            # as a node in the backend right now.
-            # XXXX
-            obj = self._p_jar.setComplexProperty(name, self)
-            # XXX ... set values
-        else:
-            self._p_jar.setSimpleProperty(name, self)
-            self._props[name] = value
-
-    def addProperty(self, name):
-        """See `nuxeo.capsule.interfaces.IObject`
-        """
-        if self._p_jar is None:
-            raise ValueError("Cannot add inside a non-persisted property")
-        return self._p_jar.setComplexProperty(name, self)
-
+        try:
+            self._p_jar.setProperty(self, name, value)
+        except KeyError:
+            raise
+            raise KeyError("Schema has no property %r" % name)
 
 class Document(ObjectBase, CapsuleDocument):
     """JCR-specific document.
@@ -61,13 +49,42 @@ class Document(ObjectBase, CapsuleDocument):
     Deals with property addition.
     """
 
+    def getUUID(self):
+        """See `nuxeo.capsule.interfaces.IDocument`
+        """
+        return self._p_oid
+
+    def addChild(self, name, type_name):
+        """See `nuxeo.capsule.interfaces.IDocument`
+        """
+        child = self._p_jar.createChild(self, name, type_name)
+        return child.__of__(self)
+
+    def removeChild(self, name):
+        """See `nuxeo.capsule.interfaces.IDocument`
+        """
+        raise NotImplementedError
+        child = self._children.removeChild(name)
+        child.__parent__ = None # Help the GC
+        # Deregister UUID
+        self.getWorkspace()._removeUUID(child.getUUID())
+
+class Workspace(Document, CapsuleWorkspace):
+    """JCR Workspace
+    """
+
 class ListProperty(CapsuleListProperty):
     """JCR-specific list property.
     """
-    zope.interface.implements(INonPersistent)
+    def _createItem(self):
+        """Create one item for the list.
+        """
+        return self._p_jar.createItem(self)
 
 class ObjectProperty(ObjectBase, CapsuleObjectProperty):
     """JCR-specific object property.
 
     Deals with property addition.
     """
+
+

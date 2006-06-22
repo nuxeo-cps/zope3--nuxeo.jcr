@@ -19,7 +19,7 @@
 import unittest
 from datetime import datetime
 
-from nuxeo.jcr.protocol import JCRController
+from nuxeo.jcr.controller import JCRController
 
 
 class FakeSocket(object):
