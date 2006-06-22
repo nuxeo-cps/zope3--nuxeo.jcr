@@ -35,13 +35,15 @@ from ZODB.POSException import InvalidObjectReference
 from ZODB.Connection import Connection as ZODBConnection
 
 from nuxeo.capsule.interfaces import IObjectBase
+from nuxeo.capsule.interfaces import IChildren
 from nuxeo.capsule.interfaces import IProperty
 from nuxeo.capsule.interfaces import IListProperty
 from nuxeo.capsule.interfaces import ICapsuleField
 from nuxeo.capsule.interfaces import IListPropertyField
 from nuxeo.capsule.interfaces import IObjectPropertyField
 
-from nuxeo.capsule.base import Children
+from nuxeo.jcr.impl import Children
+from nuxeo.jcr.impl import NoChildrenYet
 from nuxeo.jcr.impl import ListProperty
 from nuxeo.jcr.impl import ObjectProperty
 from nuxeo.jcr.impl import Document
@@ -79,12 +81,12 @@ class Connection(ZODBConnection):
       objects are all moved to the real _cache. The objects are moved to
       _creating at commit time.
 
-    - _registered_objects is the list of objects registered by
-      Persistence when the object was first changed, or by add(). It
-      also contains objects who ended up in a ReadConflictError, just to
-      be able to clean them up from the cache on abort with the other
-      modified objects. All objects of this list are either in _cache or
-      in _added.
+    - _registered_objects is the list registered objects. Objects can be
+      registered by add(), when they are modified (and are not already
+      registered) or when their access caused a ReadConflictError (just
+      to be able to clean them up from the cache on abort with the other
+      modified objects). All objects of this list are either in _cache
+      or in _added.
 
     During commit, all objects go to either _modified or _creating:
 
@@ -107,6 +109,9 @@ class Connection(ZODBConnection):
 
     - _registered is a mapping of oid to a set of modified attributes
       for object in the _cache. It doesn't include objects from _added.
+
+    - _added_order is a list of oids of added objects, in the order they
+      were added.
 
     - _created is a set, filled at commit/savepoint time with objects
       created.
@@ -174,6 +179,10 @@ class Connection(ZODBConnection):
 
         # Mapping of oid to a set of changed properties
         self._registered = {}
+        # Mapping of oid to added objects
+        self._added = {}
+        # List of oids of added objects
+        self._added_order = []
 
         # Oid that is being just being marked _p_changed for which
         # we don't want register() to freak out.
@@ -259,34 +268,60 @@ class Connection(ZODBConnection):
     def createItem(self, obj):
         """Create an item in a ListProperty.
         """
-        # assert providedBy for obj? XXX
+        assert IListProperty.providedBy(obj)
         assert obj._p_jar is self
         oid = obj._p_oid
         assert oid is not None
         assert '/' in oid
-        uuid, name = oid.split('/', 1)
 
+        name = oid.split('/', 1)[1]
         node = ObjectProperty(name, obj.getValueSchema())
         self._addNode(node, obj)
         return node
 
     def createChild(self, parent, name, node_type):
         """Create a child in a Document.
+
+        The ``parent`` is the document, not the Children holder class.
         """
-        # assert providedBy for parent? XXX
+        assert IObjectBase.providedBy(parent)
         assert parent._p_jar is self
         poid = parent._p_oid
         assert poid is not None
+        children = parent._children
+        assert IChildren.providedBy(children)
 
+        if name in children:
+            raise KeyError("Child %r already exists" % name)
+
+        # Are we creating the first child?
+        if isinstance(children, NoChildrenYet):
+            children = Children(parent)
+            self._addNode(children, parent)
+            parent.__dict__['_children'] = children
+
+        # Create the child
         schema = self._db.getSchema(node_type)
         klass = self._db.getClass(node_type)
         child = klass(name, schema)
-        self._addNode(child, parent)
+        self._addNode(child, children)
+        children._children[name] = child
+        if children._order is not None:
+            children._order.append(name)
         return child
+
+    def _maybeJoin(self):
+        """Join the current transaction if not yet done.
+        """
+        if self._needs_to_join:
+            self.transaction_manager.get().join(self)
+            self._needs_to_join = False
 
     def _addNode(self, obj, parent):
         """Add a created node, give it an oid and register it.
         """
+        self._maybeJoin()
+
         if IListProperty.providedBy(obj):
             oid = parent._p_oid + '/' + obj.getName()
         else:
@@ -298,6 +333,7 @@ class Connection(ZODBConnection):
         obj._p_oid = oid
         obj._p_jar = self
         self._added[oid] = obj
+        self._added_order.append(oid)
 
     def register(self, obj):
         """Register obj as modified.
@@ -318,9 +354,7 @@ class Connection(ZODBConnection):
             # Modifying a just-created object
             return
 
-        if self._needs_to_join:
-            self.transaction_manager.get().join(self)
-            self._needs_to_join = False
+        self._maybeJoin()
 
         self._registered[oid] = set()
 
@@ -428,6 +462,7 @@ class Connection(ZODBConnection):
         self._needs_to_join = True
         self._registered = {}
         self._added = {}
+        self._added_order = []
 
     ##################################################
     # Export/Import
@@ -632,7 +667,7 @@ class Connection(ZODBConnection):
             }
         if full_document:
             if children is None:
-                children = Children() # XXX FIXME should be created normally!
+                children = NoChildrenYet(this)
             state['_children'] = children
 
         return state
@@ -738,6 +773,7 @@ class Connection(ZODBConnection):
             self._modified.add(oid)
 
         self._added = {}
+        self._added_order = []
         self._registered = {}
 
         return NoRollbackSavepoint()
@@ -751,11 +787,11 @@ class Connection(ZODBConnection):
         - 'remove', uuid XXX
         - 'order' XXX
         """
-        for oid, obj in self._added.iteritems():
-            # XXX ordering for ListProperty children! XXXXXXX
+        for oid in self._added_order:
             if '/' in oid:
                 # ListProperty, no real existence in the JCR
                 continue
+            obj = self._added[oid]
             poid = obj.__parent__._p_oid
             if '/' in poid:
                 # Parent is a ListProperty, add to its base UUID
@@ -763,7 +799,7 @@ class Connection(ZODBConnection):
             else:
                 puuid = poid
                 name = obj.__name__
-            node_type = obj.getSchema().getName() # fails for ecm:children!XXX
+            node_type = obj.getTypeName()
             props = self._collectSimpleProperties(obj)
             command = ('add', puuid, name, node_type, props, oid)
             yield command
@@ -793,6 +829,8 @@ class Connection(ZODBConnection):
     def _collectSimpleProperties(self, obj):
         """Get the simple properties from an object.
         """
+        if IChildren.providedBy(obj):
+            return {}
         props = {}
         for key, value in obj._props.iteritems():
             if IProperty.providedBy(value):

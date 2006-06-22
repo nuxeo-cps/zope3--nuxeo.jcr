@@ -129,8 +129,9 @@ class FakeJCRController(object):
         for command in commands:
             op = command[0]
             if op == 'add':
-                raise NotImplementedError
                 puuid, name, node_type, props, token = command[1:]
+                if puuid in map:
+                    puuid = map[puuid]
                 uuid = 'cafe-%04d' % self._next_uuid
                 self._next_uuid += 1
                 self._addChild(puuid, uuid, name, node_type, [], props)

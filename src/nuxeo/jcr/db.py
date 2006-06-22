@@ -19,11 +19,11 @@
 import threading
 from ZODB.DB import DB as ZODBDB
 from zope.schema.interfaces import IList
-from nuxeo.capsule.base import Children
 from nuxeo.capsule.interfaces import IDocument
 from nuxeo.capsule.interfaces import IWorkspace
 from nuxeo.capsule.interfaces import IObjectBase
 from nuxeo.jcr.schema import SchemaManager
+from nuxeo.jcr.impl import Children
 from nuxeo.jcr.impl import Document
 from nuxeo.jcr.impl import Workspace
 from nuxeo.jcr.impl import ObjectProperty

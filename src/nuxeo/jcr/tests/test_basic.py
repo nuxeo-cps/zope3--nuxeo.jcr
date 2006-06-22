@@ -22,6 +22,11 @@ from zope.interface.verify import verifyClass
 
 class InterfaceTests(unittest.TestCase):
 
+    def test_NoChildrenYet(self):
+        from nuxeo.capsule.interfaces import IChildren
+        from nuxeo.jcr.impl import NoChildrenYet
+        verifyClass(IChildren, NoChildrenYet)
+
     def test_JCRController(self):
         from nuxeo.jcr.interfaces import IJCRController
         from nuxeo.jcr.controller import JCRController
