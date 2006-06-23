@@ -23,8 +23,8 @@ cp=$jars/commons-collections-3.1.jar
 cp=$cp:$jars/concurrent-1.3.4.jar
 cp=$cp:$jars/derby-10.1.1.0.jar
 cp=$cp:$jars/geronimo-spec-jta-1.0-M1.jar
-cp=$cp:$jars/jackrabbit-1.0-SNAPSHOT.jar
-cp=$cp:$jars/jackrabbit-commons-1.0-SNAPSHOT.jar
+cp=$cp:$jars/jackrabbit-core-1.0.1.jar
+cp=$cp:$jars/jackrabbit-jcr-commons-1.0.1.jar
 cp=$cp:$jars/jcr-1.0.jar
 cp=$cp:$jars/junit-3.8.1.jar
 cp=$cp:$jars/log4j-1.2.8.jar
@@ -156,6 +156,14 @@ class Processor:
         self.repository = repository
         self.state = 0
 
+    def login(self, workspaceName):
+        self.session = self.repository.login(credentials, workspaceName)
+
+    def logout(self):
+        # XXX Should flush before closing
+        if self.session is not None:
+            self.session.logout()
+
     def write(self, s):
         self.io.write(s)
 
@@ -171,11 +179,10 @@ class Processor:
             self.writeln("  %s: %s" % (cmd, desc))
 
     def cmdQuit(self, line=None):
-        # XXX Should flush before closing
+        self.logout()
         self.io.close()
 
     def cmdStop(self, line=None):
-        # XXX Doesn't close the repository correctly
         raise SystemExit
 
     def cmdDump(self, line=None):
@@ -251,7 +258,7 @@ class Processor:
         if self.session is not None:
             return self.writeln("!Already logged in.")
         try:
-            self.session = self.repository.login(credentials, workspaceName)
+            self.login(workspaceName)
         except javax.jcr.NoSuchWorkspaceException:
             return self.writeln("!No such workspace '%s'." % workspaceName)
         self.root = self.session.getRootNode()
@@ -404,6 +411,7 @@ class IO:
         self.towrite = [] # Pending data to write
 
     def close(self):
+        self.processor.logout()
         self.key.cancel() # remove channel from selector
         self.channel.close() # close socket
 
@@ -471,6 +479,7 @@ class Server:
 
     def acceptConnections(self, port):
         selector = java.nio.channels.Selector.open()
+        self.selector = selector
 
         listenChannel = java.nio.channels.ServerSocketChannel.open()
         listenChannel.configureBlocking(False)
@@ -497,11 +506,22 @@ class Server:
                 elif key.isWritable():
                     key.attachment().doWrite()
 
+    def closeIO(self):
+        iter = self.selector.keys().iterator()
+        while iter.hasNext():
+            key = iter.next()
+            io = key.attachment()
+            if io is not None:
+                io.close()
+
 
 def run_server(repoconf, repopath, port):
     repository = TransientRepository(repoconf, repopath)
-    server = Server(repository)
-    server.acceptConnections(port)
+    try:
+        server = Server(repository)
+        server.acceptConnections(port)
+    finally:
+        server.closeIO()
 
 
 if __name__ == '__main__':
