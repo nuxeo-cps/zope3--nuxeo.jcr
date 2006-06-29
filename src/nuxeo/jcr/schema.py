@@ -17,6 +17,7 @@
 """
 
 from nuxeo.capsule.interfaces import IObjectBase
+from nuxeo.capsule.interfaces import IChildren
 from nuxeo.capsule.schema import SchemaManager as BaseSchemaManager
 from nuxeo.jcr.cnd import InterfaceMaker
 
@@ -39,13 +40,10 @@ class SchemaManager(BaseSchemaManager):
         interfaces = self._interfaces
         type_names = interfaces.addData(cnd)
         for node_type in type_names:
-            if node_type in ('ecmnt:document',
-                             'ecmnt:schema'):
-                continue
             iface = interfaces[node_type]
-            if not iface.isOrExtends(IObjectBase):
-                continue
-            self.addSchema(node_type, iface)
+            if (iface.isOrExtends(IObjectBase) or
+                iface is IChildren):
+                self.addSchema(node_type, iface)
 
     def getInterface(self, name):
         """Return the interface registered for a name.
