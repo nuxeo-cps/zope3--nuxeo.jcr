@@ -774,8 +774,8 @@ class InterfaceMaker(object):
             attrs = {} # will be mutated later
 
             # Are we a container?
-            is_container = bool(1 for node in info['nodes']
-                                if node['name'] == '*')
+            is_container = bool([1 for node in info['nodes']
+                                 if node['name'] == '*'])
 
             # Find which bases to use.
             bases = tuple([self._interfaces[sup]
@@ -796,19 +796,25 @@ class InterfaceMaker(object):
 
         return new_fields
 
+    _excluded_type_names = (
+        'rep:system', # multiple * child nodes
+        'rep:versionStorage', # multiple * child nodes
+        'nt:frozenNode', # * properties
+        'nt:unstructured', # * properties
+        'nt:versionLabels', # * properties
+        )
+
     def _buildSchemas(self, type_names):
         """Build the full schemas for the given type names.
         """
         new_fields = self._makeInterfaces(type_names)
+
+        # Preconditions for container types checked first
+
         for type_name in type_names:
-            info = self._infos[type_name]
-            if type_name in ('rep:system', # multiple * child nodes
-                             'rep:versionStorage', # multiple * child nodes
-                             'nt:frozenNode', # * properties
-                             'nt:unstructured', # * properties
-                             'nt:versionLabels', # * properties
-                             ):
+            if type_name in self._excluded_type_names:
                 continue
+            info = self._infos[type_name]
             iface = self._interfaces[type_name]
             fields = new_fields[type_name]
 
@@ -819,20 +825,15 @@ class InterfaceMaker(object):
                                      (iface.getName(), type_name))
                 continue
 
-            for propinfo in info['properties']:
-                propname = propinfo['name']
-                if propname == '*':
-                    raise ValueError("* properties are disallowed for [%s]"
-                                     % type_name)
-                t = propinfo['type_name']
-                if propinfo['options']['multiple']:
-                    field = self.multiple_type_makers[t](self, propinfo)
-                else:
-                    field = self.type_makers[t](self, propinfo)
-                fields[propname] = field
-
             for nodeinfo in info['nodes']:
                 nodename = nodeinfo['name']
+                if nodename != '*':
+                    continue
+
+                if nodeinfo['options']['multiple']:
+                    raise ValueError("Multiple * child nodes are "
+                                     "disallowed for [%s]" % type_name)
+
                 req = nodeinfo['required_types']
                 if not req:
                     schema = zope.interface.Interface
@@ -846,22 +847,86 @@ class InterfaceMaker(object):
                 else:
                     raise ValueError("Can't have more than one required type "
                                      "for [%s] + %s" % (type_name, nodename))
+
+                setitem = iface['__setitem__']
+                precondition = setitem.queryTaggedValue('precondition')
+                if precondition is None:
+                    precondition = ItemTypePrecondition()
+                    setitem.setTaggedValue('precondition', precondition)
+                precondition.types += (schema,)
+
+        # Properties and single nodes
+
+        for type_name in type_names:
+            if type_name in self._excluded_type_names:
+                continue
+            info = self._infos[type_name]
+            iface = self._interfaces[type_name]
+            fields = new_fields[type_name]
+
+            # Properties
+
+            for propinfo in info['properties']:
+                propname = propinfo['name']
+                if propname == '*':
+                    raise ValueError("* properties are disallowed for [%s]"
+                                     % type_name)
+                t = propinfo['type_name']
+                if propinfo['options']['multiple']:
+                    field = self.multiple_type_makers[t](self, propinfo)
+                else:
+                    field = self.type_makers[t](self, propinfo)
+                fields[propname] = field
+
+            # Single nodes
+
+            for nodeinfo in info['nodes']:
+                nodename = nodeinfo['name']
                 if nodename == '*':
-                    if nodeinfo['options']['multiple']:
-                        raise ValueError("Multiple * child nodes are "
-                                         "disallowed for [%s]" % type_name)
-                    # This node type is actually a container
-                    # Put precondition in place on the interface itself
-                    setitem = iface['__setitem__']
-                    precondition = setitem.queryTaggedValue('precondition')
-                    if precondition is None:
-                        precondition = ItemTypePrecondition()
-                        setitem.setTaggedValue('precondition', precondition)
-                    precondition.types += (schema,)
+                    continue
+
+                if nodeinfo['options']['multiple']:
+                    raise ValueError("Same-name siblings are disallowed for "
+                                     "[%s] + %s *" % (type_name, nodename))
+
+                req = nodeinfo['required_types']
+                if not req:
+                    schema = zope.interface.Interface
+                elif len(req) == 1:
+                    t = req[0]
+                    try:
+                        schema = self._interfaces[t]
+                    except KeyError:
+                        raise ValueError("Unknown type %s referenced by [%s] "
+                                         "+ %s" % (t, type_name, nodename))
+                else:
+                    raise ValueError("Can't have more than one required type "
+                                     "for [%s] + %s" % (type_name, nodename))
+
+                if schema.extends(IContainer):
+                    names = (set(schema.names(all=True))
+                             - set(IContainer.names(all=True))
+                             - set(IObjectBase.names(all=True)))
+                    if names:
+                        from zope.interface import providedBy
+                        raise ValueError(
+                            "Cannot have container with properties (%s) "
+                            "for [%s] + %s" %
+                            (', '.join(sorted(names)),
+                             type_name, nodename))
+                    types = schema['__setitem__'].getTaggedValue(
+                        'precondition').types
+                    if len(types) > 1:
+                        raise ValueError("List cannot hold more than one "
+                                         "type for [%s] + %s" %
+                                         (type_name, nodename))
+                    subschema = types[0]
+                    subfield = ObjectPropertyField(__name__='',
+                                                   schema=subschema)
+                    field = ListPropertyField(__name__=nodename,
+                                              value_type=subfield)
                 else:
                     field = ObjectPropertyField(__name__=nodename,
                                                 schema=schema)
-                    if nodeinfo['options']['multiple']:
-                        field = ListPropertyField(__name__=nodename,
-                                                  value_type=field)
-                    fields[nodename] = field
+
+                fields[nodename] = field
