@@ -18,17 +18,6 @@
 XXX TODO:
 
 - constraints for properties
-
-- nodes that are multiple (same-name siblings) -> illegal
-
-- nodes named * (foo)
-   - unordered => dict of qname -> foo
-               or set of foo if names are irrelevant
-   - ordered => ordered dict if names are application-relevant
-             => list if names are irrelevant
-   This needs additional info to decide, we can get that for instance
-   by giving semantics to some base nodetypes. (nt:list, nt:set, nt:dict...)
-
 - default values for properties
 
 - autocreated -> illegal
@@ -36,9 +25,6 @@ XXX TODO:
 - protected -> ?
 - mandatory -> ?
 - version -> ?
-
-
-
 """
 
 import re
@@ -920,13 +906,8 @@ class InterfaceMaker(object):
                         raise ValueError("List cannot hold more than one "
                                          "type for [%s] + %s" %
                                          (type_name, nodename))
-                    subschema = types[0]
-                    subfield = ObjectPropertyField(__name__='',
-                                                   schema=subschema)
-                    field = ListPropertyField(__name__=nodename,
-                                              value_type=subfield)
+                    field = ListPropertyField(schema, __name__=nodename)
                 else:
-                    field = ObjectPropertyField(__name__=nodename,
-                                                schema=schema)
+                    field = ObjectPropertyField(schema, __name__=nodename)
 
                 fields[nodename] = field
