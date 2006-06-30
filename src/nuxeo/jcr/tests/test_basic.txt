@@ -25,12 +25,20 @@ Then we open the database to get a connection::
     >>> root_uuid
     'cafe-babe'
 
-Let's see what types and schemas are available::
+Let's see what types and schemas are available, and check their classes::
 
-    >>> sorted(conn.getSchemaManager().getSchemas().keys())
+    >>> sm = conn.getSchemaManager()
+    >>> sorted(sm.getSchemas().keys())
     ... #doctest: +NORMALIZE_WHITESPACE
-    ['ecmst:dublincore', 'ecmst:name', 'ecmst:tripreport',
+    ['ecmnt:children', 'ecmnt:document', 'ecmnt:schema',
+     'ecmst:dublincore', 'ecmst:name', 'ecmst:names', 'ecmst:tripreport',
      'rep:root', 'tripreport']
+    >>> sm.getClass('ecmst:name')
+    <class 'nuxeo.jcr.impl.ObjectProperty'>
+    >>> sm.getClass('ecmst:dublincore')
+    <class 'nuxeo.jcr.impl.ObjectProperty'>
+    >>> sm.getClass('tripreport')
+    <class 'nuxeo.jcr.impl.Document'>
 
 Ask the connection for the root::
 
@@ -99,9 +107,9 @@ There is also a list property of friends::
     >>> len(friends)
     2
     >>> list(friends)
-    ... #doctest: +NORMALIZE_WHITESPACE
-    [<ObjectProperty at /atrip/friends>,
-     <ObjectProperty at /atrip/friends>]
+    ... #doctest: +NORMALIZE_WHITESPACE +ELLIPSIS
+    [<ObjectProperty at /atrip/friends/...>,
+     <ObjectProperty at /atrip/friends/...>]
     >>> sorted(friends[0].getProperties().items())
     [('first', u'Chloe'), ('last', u"O'Brian")]
     >>> sorted(friends[1].getProperties().items())

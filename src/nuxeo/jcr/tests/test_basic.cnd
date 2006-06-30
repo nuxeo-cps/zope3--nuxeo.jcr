@@ -46,12 +46,16 @@
   - first (String)
   - last (String)
 
+# list of names
+[ecmst:names] > ecmnt:schema
+  + * (ecmst:name)
+
 # the schema for the tripreport part
 [ecmst:tripreport] > ecmnt:schema
   - duedate (Date)
   - cities (String) multiple
   + name (ecmst:name)
-  + friends (ecmst:name) multiple
+  + friends (ecmst:names)
   + mother (ecmst:name)
 
 

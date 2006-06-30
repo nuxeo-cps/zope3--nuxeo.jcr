@@ -48,10 +48,18 @@ import java.nio.charset
 import java.nio.channels
 from java.nio.channels import SelectionKey
 
-import javax.jcr
 from org.apache.jackrabbit.core import TransientRepository
 from org.apache.jackrabbit.core.nodetype.compact import \
      CompactNodeTypeDefWriter
+
+import javax.jcr
+import javax.jcr.observation.EventListener
+from javax.jcr.observation.Event import NODE_ADDED
+from javax.jcr.observation.Event import NODE_REMOVED
+from javax.jcr.observation.Event import PROPERTY_ADDED
+from javax.jcr.observation.Event import PROPERTY_REMOVED
+from javax.jcr.observation.Event import PROPERTY_CHANGED
+
 
 NAMESPACES = [
     ('cpsnt', 'http://nuxeo.org/jcr/1.0/cpsnt/'),
@@ -143,6 +151,31 @@ def dumpNode(node, spaces, output):
         dumpNode(n, spaces, output)
 
 
+class Listener(javax.jcr.observation.EventListener):
+
+    strings = {
+        NODE_ADDED: 'NODE_ADDED',
+        NODE_REMOVED: 'NODE_REMOVED',
+        PROPERTY_ADDED: 'PROPERTY_ADDED',
+        PROPERTY_REMOVED: 'PROPERTY_REMOVED',
+        PROPERTY_CHANGED: 'PROPERTY_CHANGED',
+        }
+
+    def __init__(self, processor, name):
+        self.processor = processor
+        self.name = name
+
+    def _eventString(self, type):
+        return self.strings.get(type, str(type))
+
+    def onEvent(self, events):
+        while events.hasNext():
+            event = events.nextEvent()
+            print '%s: event %-16s path %s' % (
+                self.name,
+                self._eventString(event.getType()),
+                event.getPath())
+
 
 class Processor:
     """Command line processor, tied to a JCR Session.
@@ -158,6 +191,14 @@ class Processor:
 
     def login(self, workspaceName):
         self.session = self.repository.login(credentials, workspaceName)
+        om = self.session.getWorkspace().getObservationManager()
+        listener = Listener(self, workspaceName)
+        eventTypes = (NODE_ADDED | NODE_REMOVED |
+                      PROPERTY_ADDED | PROPERTY_REMOVED | PROPERTY_CHANGED)
+        isDeep = True
+        noLocal = False
+        om.addEventListener(listener, eventTypes, '/',
+                            isDeep, None, None, noLocal)
 
     def logout(self):
         # XXX Should flush before closing

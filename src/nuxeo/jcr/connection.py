@@ -27,6 +27,7 @@ The standard connection's dialogue with the JCR server is:
 """
 
 import sys
+from random import randrange
 from persistent import Persistent
 from ZODB.POSException import ConflictError
 from ZODB.POSException import ReadConflictError
@@ -35,6 +36,7 @@ from ZODB.POSException import InvalidObjectReference
 from ZODB.Connection import Connection as ZODBConnection
 
 from nuxeo.capsule.interfaces import IObjectBase
+from nuxeo.capsule.interfaces import IContainerBase
 from nuxeo.capsule.interfaces import IChildren
 from nuxeo.capsule.interfaces import IProperty
 from nuxeo.capsule.interfaces import IListProperty
@@ -42,11 +44,12 @@ from nuxeo.capsule.interfaces import ICapsuleField
 from nuxeo.capsule.interfaces import IListPropertyField
 from nuxeo.capsule.interfaces import IObjectPropertyField
 
+from nuxeo.jcr.impl import Document
+from nuxeo.jcr.impl import ContainerBase
 from nuxeo.jcr.impl import Children
 from nuxeo.jcr.impl import NoChildrenYet
 from nuxeo.jcr.impl import ListProperty
 from nuxeo.jcr.impl import ObjectProperty
-from nuxeo.jcr.impl import Document
 
 _MARKER = object()
 
@@ -251,10 +254,10 @@ class Connection(ZODBConnection):
                         # XXX do we allow this?
                         raise ValueError("Must create %r from simple types"
                                          % name)
-                    if IObjectPropertyField.providedBy(field):
+                    if IListPropertyField.providedBy(field):
+                        prop = ListProperty(name, field.schema)
+                    elif IObjectPropertyField.providedBy(field):
                         prop = ObjectProperty(name, field.schema)
-                    elif IListPropertyField.providedBy(field):
-                        prop = ListProperty(name, field.value_type.schema)
                     else:
                         raise ValueError("Unknown property: %r" % field)
                     self._addNode(prop, obj)
@@ -265,49 +268,41 @@ class Connection(ZODBConnection):
                     obj._props[name] = value
                     self._prop_changed(obj, name)
 
-    def createItem(self, obj):
+    def addValue(self, obj):
         """Create an item in a ListProperty.
         """
         assert IListProperty.providedBy(obj)
         assert obj._p_jar is self
         oid = obj._p_oid
         assert oid is not None
-        assert '/' in oid
 
-        name = oid.split('/', 1)[1]
+        name = str(randrange(0, 2<<30)) # XXX better random id?
         node = ObjectProperty(name, obj.getValueSchema())
         self._addNode(node, obj)
+        obj._children[name] = node
+        if obj._order is not None:
+            obj._order.append(name)
         return node
 
-    def createChild(self, parent, name, node_type):
-        """Create a child in a Document.
+    def createChild(self, container, name, node_type):
+        """Create a child in a IContainerBase.
 
-        The ``parent`` is the document, not the Children holder class.
+        Returns the created child.
         """
-        assert IObjectBase.providedBy(parent)
-        assert parent._p_jar is self
-        poid = parent._p_oid
+        assert IContainerBase.providedBy(container), container
+        assert container._p_jar is self
+        poid = container._p_oid
         assert poid is not None
-        children = parent._children
-        assert IChildren.providedBy(children)
 
+        children = container._children
         if name in children:
             raise KeyError("Child %r already exists" % name)
-
-        # Are we creating the first child?
-        if isinstance(children, NoChildrenYet):
-            children = Children(parent)
-            self._addNode(children, parent)
-            parent.__dict__['_children'] = children
 
         # Create the child
         schema = self._db.getSchema(node_type)
         klass = self._db.getClass(node_type)
         child = klass(name, schema)
-        self._addNode(child, children)
-        children._children[name] = child
-        if children._order is not None:
-            children._order.append(name)
+        self._addNode(child, container)
         return child
 
     def _maybeJoin(self):
@@ -322,12 +317,10 @@ class Connection(ZODBConnection):
         """
         self._maybeJoin()
 
-        if IListProperty.providedBy(obj):
-            oid = parent._p_oid + '/' + obj.getName()
-        else:
-            # Make a temporary oid
-            oid = 'T%d' % self._next_tmp_uuid
-            self._next_tmp_uuid += 1
+        # Make a temporary oid
+        oid = 'T%d' % self._next_tmp_uuid
+        self._next_tmp_uuid += 1
+
         # Create the node
         obj.__parent__ = parent
         obj._p_oid = oid
@@ -517,12 +510,10 @@ class Connection(ZODBConnection):
 
         If node_type is None, the storage will be queried.
         """
-        if '/' in oid:
-            klass = ListProperty
-        else:
-            if node_type is None:
-                node_type = self.controller.getNodeType(oid)
-            klass = self._db.getClass(node_type)
+        if node_type is None:
+            # XXX make sure we rarely call this
+            node_type = self.controller.getNodeType(oid)
+        klass = self._db.getClass(node_type)
         obj = klass.__new__(klass)
         obj._p_oid = oid
         obj._p_jar = self
@@ -570,10 +561,8 @@ class Connection(ZODBConnection):
             state = self._pending_states.pop(oid)
         elif issubclass(klass, Document): # or use interfaces?
             state = self._loadObjectState(oid, full_document=True)
-        elif klass is Children:
-            state = self._loadChildrenState(oid)
-        elif klass is ListProperty:
-            state = self._loadListPropertyState(oid)
+        elif issubclass(klass, ContainerBase):
+            state = self._loadContainerState(oid)
         elif klass is ObjectProperty:
             state = self._loadObjectState(oid)
         else:
@@ -620,42 +609,13 @@ class Connection(ZODBConnection):
 
         # JCR children
         children = None
-        toskip = set()
         for child_name, child_uuid, child_type in jcrchildren:
-            # Check if we have a ListProperty to create
-            if child_name not in prop_map:
-                field = schema.get(child_name)
-                if IListPropertyField.providedBy(field):
-                    oid = uuid + '/' + child_name
-                    lprop = self.get(oid) # type not needed
-                    if lprop._p_changed is None:
-                        # Ghost, set state by indirect call to setstate()
-                        lprop_state = {
-                            '__name__': child_name,
-                            '__parent__': this,
-                            '_value_schema': field.value_type.schema,
-                            '_values': [],
-                            }
-                        self._pending_states[oid] = lprop_state
-                        lprop._p_activate()
-                    else:
-                        # We alreay have a non-ghost for the list property,
-                        # ignore these children because their info is
-                        # already taken care of.
-                        toskip.add(child_name)
-                    prop_map[child_name] = lprop
-            if child_name in toskip:
-                continue
-            # Get child
             child = self.get(child_uuid, node_type=child_type)
             if child_name == 'ecm:children':
                 if full_document:
                     children = child
-            elif child_name in prop_map:
-                # Multiple type, add to ListProperty
-                prop_map[child_name]._values.append(child)
             else:
-                # Simple type
+                # Complex property
                 prop_map[child_name] = child
 
         # State
@@ -672,8 +632,9 @@ class Connection(ZODBConnection):
 
         return state
 
-    def _loadChildrenState(self, uuid):
-        """Load the state for a JCR Node representing children.
+    def _loadContainerState(self, uuid):
+        """Load the state for a JCR Node which is a container
+        (Children or ListProperty)
         """
         states = self.controller.getNodeStates([uuid])
         name, parent_uuid, jcrchildren, properties, deferred = states[uuid]
@@ -696,52 +657,13 @@ class Connection(ZODBConnection):
 
         # State
         state = {
-            '__name__': name, # XXX name is actually constant, and in class
+            '__name__': name,
             '__parent__': parent,
             '_children': child_map,
             '_order': order,
             }
         return state
 
-    def _loadListPropertyState(self, oid):
-        """Load the state of a ListProperty from the JCR.
-        """
-        uuid, prop_name = oid.split('/', 1)
-        # XXX need a more specialized API here to get only prop_name children
-        states = self.controller.getNodeStates([uuid])
-        name, parent_uuid, jcrchildren, properties, deferred = states[uuid]
-        assert deferred == [], deferred # XXX for now
-
-        # Parent
-        parent = self.get(uuid)
-
-        # Properties to get type_name and schema
-        type_name = 'ecm:UnknownType' # XXX
-        for n, v in properties:
-            if n == 'jcr:primaryType':
-                type_name = v
-                break
-        schema = self._db.getSchema(type_name)
-        value_schema = schema[prop_name].value_type.schema
-
-        # JCR Children
-        values = []
-        for child_name, child_uuid, child_type in jcrchildren:
-            if child_name != prop_name:
-                # Only keep the wanted children # XXX optimize this
-                continue
-            child = self.get(child_uuid, node_type=child_type)
-            values.append(child)
-
-        # State
-        state = {
-            '__name__': name,
-            '__parent__': parent,
-            '_value_schema': value_schema,
-            '_values': values,
-            }
-
-        return state
 
     ##################################################
     # Save
@@ -758,8 +680,6 @@ class Connection(ZODBConnection):
 
         # Replace temporary oids with final ones, and put new objects in cache
         for toid, obj in self._added.iteritems():
-            if '/' in toid:
-                continue #XXX
             oid = map[toid]
             obj._p_oid = oid
             obj._p_changed = False
@@ -788,17 +708,9 @@ class Connection(ZODBConnection):
         - 'order' XXX
         """
         for oid in self._added_order:
-            if '/' in oid:
-                # ListProperty, no real existence in the JCR
-                continue
             obj = self._added[oid]
-            poid = obj.__parent__._p_oid
-            if '/' in poid:
-                # Parent is a ListProperty, add to its base UUID
-                puuid, name = poid.split('/', 1)
-            else:
-                puuid = poid
-                name = obj.__name__
+            puuid = obj.__parent__._p_oid
+            name = obj.__name__
             node_type = obj.getTypeName()
             props = self._collectSimpleProperties(obj)
             command = ('add', puuid, name, node_type, props, oid)

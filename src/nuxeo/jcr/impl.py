@@ -23,6 +23,7 @@ from persistent import Persistent
 import zope.interface
 from nuxeo.capsule.base import IChildren
 from nuxeo.capsule.base import ObjectBase as CapsuleObjectBase
+from nuxeo.capsule.base import ContainerBase as CapsuleContainerBase
 from nuxeo.capsule.base import Children as CapsuleChildren
 from nuxeo.capsule.base import Document as CapsuleDocument
 from nuxeo.capsule.base import Workspace as CapsuleWorkspace
@@ -47,6 +48,36 @@ class ObjectBase(CapsuleObjectBase):
         except KeyError:
             raise
             raise KeyError("Schema has no property %r" % name)
+
+
+class ContainerBase(CapsuleContainerBase):
+    """JCR-specific children holder.
+    """
+    def addChild(self, name, type_name):
+        """See `nuxeo.capsule.interfaces.IContainerBase`
+        """
+        child = self._p_jar.createChild(self, name, type_name)
+        self._children[name] = child
+        if self._order is not None:
+            self._order.append(name)
+        return child
+
+    def removeChild(self, name):
+        """See `nuxeo.capsule.interfaces.IContainerBase`
+        """
+        raise NotImplementedError
+        child = self._children[name]
+        del self._children[name] # XXX call _p_jar
+        if self._order is not None:
+            self._order.remove(name)
+        return child
+
+    def reorder(self, names):
+        """See `nuxeo.capsule.interfaces.IContainerBase`
+        """
+        if self._order == names:
+            return
+        raise NotImplementedError # XXX call _p_jar
 
 
 class NoChildrenYet(object):
@@ -77,21 +108,31 @@ class NoChildrenYet(object):
         return '<%s at %s>' % (self.__class__.__name__, path)
 
     def getChild(self, name, default=_MARKER):
-        """See `nuxeo.capsule.interfaces.IChildren`
+        """See `nuxeo.capsule.interfaces.IContainerBase`
         """
         if default is not _MARKER:
             return default
         raise KeyError(name)
 
     def __getitem__(self, name):
-        """See `nuxeo.capsule.interfaces.IChildren`
+        """See `nuxeo.capsule.interfaces.IContainerBase`
         """
         raise KeyError(name)
 
     def getChildren(self):
-        """See `nuxeo.capsule.interfaces.IChildren`
+        """See `nuxeo.capsule.interfaces.IContainerBase`
         """
         return []
+
+    def __iter__(self):
+        """See `nuxeo.capsule.interfaces.IContainerBase`
+        """
+        return iter(())
+
+    def hasChild(self, name):
+        """See `nuxeo.capsule.interfaces.IContainerBase`
+        """
+        return False
 
     def __contains__(self, name):
         return False
@@ -100,22 +141,38 @@ class NoChildrenYet(object):
         return 0
 
     def hasChildren(self):
-        """See `nuxeo.capsule.interfaces.IChildren`
+        """See `nuxeo.capsule.interfaces.IContainerBase`
         """
         return False
 
     def addChild(self, name, type_name):
-        """See `nuxeo.capsule.interfaces.IChildren`
+        """See `nuxeo.capsule.interfaces.IContainerBase`
         """
         raise TypeError("Can't add a child to NoChildrenYet")
 
     def removeChild(self, name):
-        """See `nuxeo.capsule.interfaces.IChildren`
+        """See `nuxeo.capsule.interfaces.IContainerBase`
         """
         raise KeyError(name)
 
+    def __delitem__(self, name):
+        """See `nuxeo.capsule.interfaces.IContainerBase`
+        """
+        raise KeyError(name)
 
-class Children(CapsuleChildren):
+    def clear(self):
+        """See `nuxeo.capsule.interfaces.IContainerBase`
+        """
+        pass
+
+    def reorder(self, names):
+        """See `nuxeo.capsule.interfaces.IContainerBase`
+        """
+        if names:
+            raise ValueError("Names mismatch")
+
+
+class Children(ContainerBase, CapsuleChildren):
     """JCR-specific Children class.
     """
     def getTypeName(self):
@@ -136,29 +193,35 @@ class Document(ObjectBase, CapsuleDocument):
     def addChild(self, name, type_name):
         """See `nuxeo.capsule.interfaces.IDocument`
         """
-        child = self._p_jar.createChild(self, name, type_name)
+        children = self._children
+
+        # Are we creating the first child?
+        if isinstance(children, NoChildrenYet):
+            children = self._p_jar.createChild(self, 'ecm:children',
+                                               'ecmnt:children')
+            self.__dict__['_children'] = children # (avoid changing self)
+
+        child = children.addChild(name, type_name)
         return child.__of__(self)
 
     def removeChild(self, name):
         """See `nuxeo.capsule.interfaces.IDocument`
         """
-        raise NotImplementedError
         child = self._children.removeChild(name)
-        child.__parent__ = None # Help the GC
-        # Deregister UUID
-        self.getWorkspace()._removeUUID(child.getUUID())
+        return child.__of__(self)
 
 class Workspace(Document, CapsuleWorkspace):
     """JCR Workspace
     """
 
-class ListProperty(CapsuleListProperty):
+class ListProperty(ContainerBase, ObjectBase, CapsuleListProperty):
     """JCR-specific list property.
     """
-    def _createItem(self):
+
+    def addValue(self):
         """Create one item for the list.
         """
-        return self._p_jar.createItem(self)
+        return self._p_jar.addValue(self)
 
 class ObjectProperty(ObjectBase, CapsuleObjectProperty):
     """JCR-specific object property.

@@ -16,7 +16,7 @@
   - publicationDates (date) multiple
 
   + publisher (Company)
-  + authors (Author) multiple
+  + authors (Authors)
 
 [Company]
   - name
@@ -25,6 +25,9 @@
 [Author]
   - firstname
   - lastname
+
+[Authors]
+  + * (Author)
 
 # cyclic types
 
@@ -37,6 +40,6 @@
   - foo
   - bar (string) multiple
   + who (Author)
-  + contributors (Author) multiple
+  + contributors (Authors)
   + * (Folder)
   + * (Document)

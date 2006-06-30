@@ -135,6 +135,11 @@ Some things we disallow::
       ...
     ValueError: Multiple * child nodes are disallowed for [foo]
 
+    >>> InterfaceMaker("[foo] + bar mul")
+    Traceback (most recent call last):
+      ...
+    ValueError: Same-name siblings are disallowed for [foo] + bar *
+
     >>> InterfaceMaker("[foo] + bar (x, y)")
     Traceback (most recent call last):
       ...
@@ -144,7 +149,7 @@ Inheritance of types is taken into account::
 
     >>> ifaces = InterfaceMaker("[foo] > bar - at1  [bar] - at2")
     >>> IFoo, IBar = ifaces['foo'], ifaces['bar']
-    >>> IFoo.isOrExtends(IBar)
+    >>> IFoo.extends(IBar)
     True
 
 We can build schemas incrementally, by adding later a definition
@@ -152,7 +157,7 @@ involving earlier schemas:
 
     >>> ifaces.addData("[baz] > foo")
     ['baz']
-    >>> ifaces['baz'].isOrExtends(IFoo)
+    >>> ifaces['baz'].extends(IFoo)
     True
     >>> sorted(ifaces.keys())
     ['bar', 'baz', 'foo']
@@ -170,7 +175,7 @@ Let's test with a realistic CND schema::
     >>> f = file(os.path.join(testdir, 'example2.cnd'))
     >>> ifaces = InterfaceMaker(f)
     >>> sorted(ifaces.keys())
-    ['Author', 'Book', 'Company', 'Document', 'Folder']
+    ['Author', 'Authors', 'Book', 'Company', 'Document', 'Folder']
 
 Check that the interface for Folder has been done correctly, with base
 interface and precondition::
@@ -178,12 +183,12 @@ interface and precondition::
     >>> from zope.app.container.interfaces import IContainer
     >>> IFolder = ifaces['Folder']
     >>> IDocument = ifaces['Document']
-    >>> IFolder.isOrExtends(IContainer)
+    >>> IFolder.extends(IContainer)
     True
-    >>> IFolder.isOrExtends(IDocument)
+    >>> IFolder.extends(IDocument)
     True
     >>> precondition = IFolder['__setitem__'].getTaggedValue('precondition')
-    >>> [t.__name__ for t in precondition.types]
+    >>> [i.getName() for i in precondition.types]
     ['Folder', 'Document']
 
 Check that complex types have been converted correctly::
@@ -208,3 +213,10 @@ Check that complex types have been converted correctly::
     True
     >>> IFolder['contributors'].value_type.schema is IAuthor
     True
+
+    >>> IAuthors = ifaces['Authors']
+    >>> IAuthors.extends(IContainer)
+    True
+    >>> precondition = IAuthors['__setitem__'].getTaggedValue('precondition')
+    >>> [i.getName() for i in precondition.types]
+    ['Author']

@@ -259,17 +259,19 @@ class Main:
         if root.hasNode('blob'):
             node = root.getNode('blob')
             node.remove()
-            root.save()
+            #root.save()
         print 'adding'
         blob = root.addNode('blob', 'nt:unstructured')
-        print 'add mixin'
-        blob.addMixin('mix:versionable')
-        print 'save'
-        root.save()
-        print 'checkin'
-        blob.checkin()
-        print 'checkout'
-        blob.checkout()
+        if 0:
+            print 'add mixin'
+            blob.addMixin('mix:versionable')
+            print 'save'
+            root.save()
+        if 0:
+            print 'checkin'
+            blob.checkin()
+            print 'checkout'
+            blob.checkout()
         print 'setting prop'
         blob.setProperty('youpi', 'true', javax.jcr.PropertyType.BOOLEAN)
         print 'setting subnode'
