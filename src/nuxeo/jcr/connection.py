@@ -27,13 +27,17 @@ The standard connection's dialogue with the JCR server is:
 """
 
 import sys
+import time
+import logging
+import threading
 from random import randrange
+
 from persistent import Persistent
+from persistent import PickleCache
 from ZODB.POSException import ConflictError
 from ZODB.POSException import ReadConflictError
 from ZODB.POSException import ConnectionStateError
 from ZODB.POSException import InvalidObjectReference
-from ZODB.Connection import Connection as ZODBConnection
 
 from nuxeo.capsule.interfaces import IObjectBase
 from nuxeo.capsule.interfaces import IContainerBase
@@ -67,44 +71,13 @@ class Root(object):
         return self.cnx.get(self.cnx.root_uuid)
 
 
-class Connection(ZODBConnection):
+class Connection(object):
     """Capsule Connection.
 
     Connection to a JCR storage.
 
-    Misc notes about base ZODBConnection
-    ------------------------------------
-
-    - _cache is a PickleCache, a cache which can ghostify objects not
-      recently used. Its API is roughly that of a dict, with additional
-      gc-related and invalidation-related methods.
-
-    - _added is a dict of oid->obj added explicitly through add().
-      _added is used as a preliminary cache until commit time when
-      objects are all moved to the real _cache. The objects are moved to
-      _creating at commit time.
-
-    - _registered_objects is the list registered objects. Objects can be
-      registered by add(), when they are modified (and are not already
-      registered) or when their access caused a ReadConflictError (just
-      to be able to clean them up from the cache on abort with the other
-      modified objects). All objects of this list are either in _cache
-      or in _added.
-
-    During commit, all objects go to either _modified or _creating:
-
-    - _creating is a dict of oid->flag of new objects (without serial),
-      either added by add() or implicitely added (discovered by the
-      serializer during commit). The flag is True for implicit adding.
-      _creating is used during abort to remove created objects from the
-      _cache, and by persistent_id to check that a new object isn't
-      reachable from multiple databases.
-
-    - _modified is a list of oids modified, which have to be invalidated
-      in the cache on abort and in other connections on finish.
-
-    JCR Connection differences
-    --------------------------
+    JCR Connection differences from standard ZODB Connection
+    --------------------------------------------------------
 
     - _registered_objects is not used, replaced by _registered.
 
@@ -141,9 +114,9 @@ class Connection(ZODBConnection):
     by a cache reduction (or manually). At its next access it will be
     refetched from storage through setstate(obj).
 
-    At commit time, all objects in _added or all modified or deleted
-    objects are written to storage. Objects in _added are moved to the
-    permanent _cache with their new permanent oid decided by the
+    At commit/savepoint time, all objects in _added or all modified or
+    deleted objects are written to storage. Objects in _added are moved
+    to the permanent _cache with their new permanent oid decided by the
     storage.
 
     JCR UUID
@@ -166,8 +139,19 @@ class Connection(ZODBConnection):
     _next_tmp_uuid = 1
 
     def __init__(self, db, version='', cache_size=1000):
-        super(Connection, self).__init__(db, version, cache_size)
-        del self.new_oid # was set by ZODBConnection.__init__
+
+        self._log = logging.getLogger('nuxeo.jcr.connection')
+
+        self._db = db
+        # Multi-database support
+        self.connections = {self._db.database_name: self}
+
+        self._needs_to_join = True
+        self.transaction_manager = None
+
+        self._opened = None # time.time() when DB.open() opened us
+        self._load_count = 0   # Number of objects unghosted XXX
+        self._store_count = 0  # Number of objects stored XXX
 
         controller = db.controller_class(db)
         self.controller = controller
@@ -176,13 +160,16 @@ class Connection(ZODBConnection):
         self.root_uuid = controller.login(db.workspace_name)
         db.loadSchemas(controller)
 
+        # Cache of persisted objects
+        self._cache = PickleCache(self, cache_size)
+
         # States loaded but that have to wait for a persistent setstate()
         # call to be put in their apropriate object. Removed after set.
         self._pending_states = {}
 
         # Mapping of oid to a set of changed properties
         self._registered = {}
-        # Mapping of oid to added objects
+        # Mapping of (temporary) oid to added objects
         self._added = {}
         # List of oids of added objects
         self._added_order = []
@@ -196,11 +183,67 @@ class Connection(ZODBConnection):
         # oids of modified objects (to be invalidated on an abort).
         self._modified = set()
         # oids of created objects (to be removed from cache on abort).
-        # XXX differs from ZODB, where it's a dict oid->flag
         self._created = set()
 
 
-    # Capsule API
+        # XXX Invalidation
+
+        self._inv_lock = threading.Lock()
+        self._invalidated = d = {}
+
+        # We intend to prevent committing a transaction in which
+        # ReadConflictError occurs.  _conflicts is the set of oids that
+        # experienced ReadConflictError.  Any time we raise ReadConflictError,
+        # the oid should be added to this set, and we should be sure that the
+        # object is registered.  Because it's registered, Connection.commit()
+        # will raise ReadConflictError again (because the oid is in
+        # _conflicts).
+        self._conflicts = {}
+
+        # If MVCC is enabled, then _mvcc is True and _txn_time stores
+        # the upper bound on transactions visible to this connection.
+        # That is, all object revisions must be written before _txn_time.
+        # If it is None, then the current revisions are acceptable.
+        # If the connection is in a version, mvcc will be disabled, because
+        # loadBefore() only returns non-version data.
+        self._txn_time = None
+
+    def open(self, transaction_manager=None, mvcc=True, synch=True):
+        """Open this connection for use.
+
+        This method is called by the DB every time a Connection is
+        opened. Any invalidations received while the Connection was
+        closed will be processed.
+        """
+        self._opened = time.time()
+        self._synch = synch
+        self._mvcc = mvcc
+
+        if transaction_manager is None:
+            transaction_manager = transaction.manager
+        self.transaction_manager = transaction_manager
+
+        #self._flush_invalidations()
+
+        if synch:
+            transaction_manager.registerSynch(self)
+
+        #if delegate:
+        #    # delegate open to secondary connections
+        #    for connection in self.connections.values():
+        #        if connection is not self:
+        #            connection.open(transaction_manager, mvcc, synch, False)
+
+    def cacheGC(self):
+        """Reduce cache size to target size.
+
+        Called by DB on connection open.
+        """
+        self._cache.incrgc()
+
+    ##################################################
+
+    # Capsule API XXX
 
     def getSchemaManager(self):
         return self._db._schema_manager
@@ -231,7 +274,7 @@ class Connection(ZODBConnection):
         else:
             old = obj._props.get(name, _MARKER)
             if old is not _MARKER:
-                # Fast case: there is a previous value, update it
+                # If there is a previous value, update it
                 if IProperty.providedBy(old):
                     if IProperty.providedBy(value):
                         # Are we setting the same property?
@@ -243,7 +286,8 @@ class Connection(ZODBConnection):
                     else:
                         old.setPythonValue(value)
                 else:
-                    # Replacing a non-IProperty, assume the new one is the same
+                    # Updating a non-IProperty
+                    assert not IProperty.providedBy(value), value
                     obj._props[name] = value
                     self._prop_changed(obj, name)
             else:
@@ -265,6 +309,7 @@ class Connection(ZODBConnection):
                     obj._props[name] = prop
                 else:
                     # Setting a new non-IProperty
+                    assert not IProperty.providedBy(value), value
                     obj._props[name] = value
                     self._prop_changed(obj, name)
 
@@ -294,16 +339,23 @@ class Connection(ZODBConnection):
         poid = container._p_oid
         assert poid is not None
 
-        children = container._children
-        if name in children:
-            raise KeyError("Child %r already exists" % name)
-
-        # Create the child
         schema = self._db.getSchema(node_type)
         klass = self._db.getClass(node_type)
         child = klass(name, schema)
         self._addNode(child, container)
         return child
+
+    def deleteChild(self, container, name):
+        """Delete a child from a IContainerBase.
+        """
+        assert IContainerBase.providedBy(container), container
+        assert container._p_jar is self
+        poid = container._p_oid
+        assert poid is not None
+
+        raise NotImplementedError
+
+
 
     def _maybeJoin(self):
         """Join the current transaction if not yet done.
@@ -374,7 +426,32 @@ class Connection(ZODBConnection):
         raise NotImplementedError
 
     ##################################################
+    # ISynchronizer (we register ourselves when the connection is opened)
+
+    def beforeCompletion(self, txn):
+        # We don't do anything before a commit starts.
+        pass
+
+    # Call the underlying storage's sync() method (if any), and process
+    # pending invalidations regardless.  Of course this should only be
+    # called at transaction boundaries.
+    def _storage_sync(self, *ignored):
+        return # XXX
+        sync = getattr(self._storage, 'sync', 0)
+        if sync:
+            sync()
+        self._flush_invalidations()
+
+    afterCompletion =  _storage_sync
+    newTransaction = _storage_sync
+
+    ##################################################
     # Resource Manager: two-phase commit
+
+    def sortKey(self):
+        """Consistent sort key for this connection.
+        """
+        return self._db.workspace_name + ':' + str(id(self))
 
     def tpc_begin(self, txn):
         """Begin commit of a transaction, starting the two-phase commit.
@@ -586,10 +663,6 @@ class Connection(ZODBConnection):
         name, parent_uuid, jcrchildren, properties, deferred = states[uuid]
         assert deferred == [], deferred # XXX for now
 
-        # This object (we're setting its state so it should be in cache)
-        this = self._getFromCache(uuid)
-        assert this is not None, ("Object loaded but not in cache", uuid)
-
         # Parent
         if parent_uuid is not None:
             parent = self.get(parent_uuid)
@@ -627,6 +700,8 @@ class Connection(ZODBConnection):
             }
         if full_document:
             if children is None:
+                this = self._getFromCache(uuid)
+                assert this is not None, ("Object not in cache", uuid)
                 children = NoChildrenYet(this)
             state['_children'] = children
 
@@ -755,4 +830,4 @@ class Connection(ZODBConnection):
 
 class NoRollbackSavepoint(object):
     def rollback(self):
-        raise TypeError("Savepoints unsupported")
+        raise TypeError("Savepoint rollback unsupported")

@@ -56,6 +56,8 @@ class ContainerBase(CapsuleContainerBase):
     def addChild(self, name, type_name):
         """See `nuxeo.capsule.interfaces.IContainerBase`
         """
+        if name in self._children:
+            raise KeyError("Child %r already exists" % name)
         child = self._p_jar.createChild(self, name, type_name)
         self._children[name] = child
         if self._order is not None:
@@ -65,12 +67,10 @@ class ContainerBase(CapsuleContainerBase):
     def removeChild(self, name):
         """See `nuxeo.capsule.interfaces.IContainerBase`
         """
-        raise NotImplementedError
-        child = self._children[name]
-        del self._children[name] # XXX call _p_jar
+        self._p_jar.deleteChild(self, name)
+        del self._children[name]
         if self._order is not None:
             self._order.remove(name)
-        return child
 
     def reorder(self, names):
         """See `nuxeo.capsule.interfaces.IContainerBase`
@@ -204,11 +204,6 @@ class Document(ObjectBase, CapsuleDocument):
         child = children.addChild(name, type_name)
         return child.__of__(self)
 
-    def removeChild(self, name):
-        """See `nuxeo.capsule.interfaces.IDocument`
-        """
-        child = self._children.removeChild(name)
-        return child.__of__(self)
 
 class Workspace(Document, CapsuleWorkspace):
     """JCR Workspace

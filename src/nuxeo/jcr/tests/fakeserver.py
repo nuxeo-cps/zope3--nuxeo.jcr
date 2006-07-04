@@ -64,18 +64,6 @@ class FakeJCRController(object):
         # Add to parent's children
         parent.children.append((name, uuid))
 
-    def _getUUIDfromPath(self, path, uuid=None):
-        if uuid is None:
-            uuid = self._root_uuid
-        if not path:
-            return uuid
-        node = self._data[uuid]
-        name, next_path = path[0], path[1:]
-        for child_name, child_uuid in node.children:
-            if child_name == name:
-                return self._getUUIDfromPath(next_path, child_uuid)
-        raise ProtocolError
-
     #
     # API
     #
@@ -96,19 +84,6 @@ class FakeJCRController(object):
             raise ProtocolError(uuid)
         return node.type
 
-    def getNodeTypeAndPath(self, uuid):
-        try:
-            node = self._data[uuid]
-        except KeyError:
-            raise ProtocolError(uuid)
-        path = []
-        current = node
-        while current.name:
-            path.append(current.name)
-            current = current.parent
-        path.reverse()
-        return node.type, tuple(path)
-
     def getNodeStates(self, uuids):
         infos = {}
         for uuid in uuids:
@@ -125,7 +100,7 @@ class FakeJCRController(object):
         return infos
 
     def sendCommands(self, commands):
-        map = {}
+        map = {} # token -> uuid
         for command in commands:
             op = command[0]
             if op == 'add':
