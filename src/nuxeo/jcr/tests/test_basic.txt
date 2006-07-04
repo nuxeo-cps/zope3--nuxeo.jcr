@@ -226,3 +226,40 @@ We can also add a complex property::
     'ecmst:name'
     >>> sorted(mother.getProperties().items())
     [('first', u'Number'), ('last', u'5')]
+    >>> tm.commit()
+
+Removal
+-------
+
+Objects can be removed from containers::
+
+    >>> txn = tm.begin()
+    >>> [c.getName() for c in root.getChildren()]
+    ['atrip']
+    >>> foo = root.addChild('foo', 'tripreport')
+    >>> [c.getName() for c in root.getChildren()]
+    ['atrip', 'foo']
+    >>> root.removeChild('foo')
+    >>> [c.getName() for c in root.getChildren()]
+    ['atrip']
+    >>> tm.commit()
+
+
+
+Sanity checks
+-------------
+
+You can't add two objects with the same name to a container::
+
+    >>> txn = tm.begin()
+    >>> root.addChild('atrip', 'tripreport')
+    xxx
+    >>> tm.abort()
+
+You can't remove a nonexisting child from a container::
+
+    >>> txn = tm.begin()
+    >>> root.removeChild('bobo')
+    xxx
+    >>> tm.abort()
+
