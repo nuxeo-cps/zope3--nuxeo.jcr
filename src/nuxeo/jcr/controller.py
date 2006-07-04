@@ -296,6 +296,16 @@ class JCRController(object):
         """
         raise NotImplementedError('Unused')
 
+    def commit(self):
+        """See IJCRController.
+        """
+        raise NotImplementedError
+
+    def abort(self):
+        """See IJCRController.
+        """
+        raise NotImplementedError
+
 
 class JCRIceController(object):
     """JCR Controller.
@@ -442,3 +452,13 @@ class JCRIceController(object):
         """See IJCRController.
         """
         raise NotImplementedError('Unused')
+
+    def commit(self):
+        """See IJCRController.
+        """
+        raise NotImplementedError
+
+    def abort(self):
+        """See IJCRController.
+        """
+        raise NotImplementedError

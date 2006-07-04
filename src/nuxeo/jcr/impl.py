@@ -67,7 +67,8 @@ class ContainerBase(CapsuleContainerBase):
     def removeChild(self, name):
         """See `nuxeo.capsule.interfaces.IContainerBase`
         """
-        self._p_jar.deleteChild(self, name)
+        child = self._children[name]
+        self._p_jar.deleteNode(child)
         del self._children[name]
         if self._order is not None:
             self._order.remove(name)

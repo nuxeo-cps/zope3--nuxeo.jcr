@@ -37,12 +37,6 @@ class InterfaceTests(unittest.TestCase):
         from nuxeo.jcr.controller import JCRIceController
         verifyClass(IJCRController, JCRIceController)
 
-    def test_FakeJCRController(self):
-        from nuxeo.jcr.interfaces import IJCRController
-        from nuxeo.jcr.tests.fakeserver import FakeJCRController
-        verifyClass(IJCRController, FakeJCRController)
-
-
 def test_suite():
     import nuxeo.jcr.tests
     import os.path

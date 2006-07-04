@@ -253,13 +253,17 @@ You can't add two objects with the same name to a container::
 
     >>> txn = tm.begin()
     >>> root.addChild('atrip', 'tripreport')
-    xxx
+    Traceback (most recent call last):
+      ...
+    KeyError: "Child 'atrip' already exists"
     >>> tm.abort()
 
 You can't remove a nonexisting child from a container::
 
     >>> txn = tm.begin()
     >>> root.removeChild('bobo')
-    xxx
+    Traceback (most recent call last):
+      ...
+    KeyError: 'bobo'
     >>> tm.abort()
 

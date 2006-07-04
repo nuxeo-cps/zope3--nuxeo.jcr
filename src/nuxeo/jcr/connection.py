@@ -104,8 +104,9 @@ class Connection(object):
     - a ghost synthesized as the child of a previously fetched object,
       it exists in the storage and is added to _cache,
 
-    - a new object created when a node is added through _addNode(), it
-      doesn't exist in the storage and is added to _added,
+    - a new object created when a node is added through
+      _registerAdded(), it doesn't exist in the storage and is added to
+      _added,
 
     - a full object fetched from storage through the get(oid) API (used
       normally only for debugging), it is added to _cache.
@@ -173,6 +174,9 @@ class Connection(object):
         self._added = {}
         # List of oids of added objects
         self._added_order = []
+
+        # List of oids to remove (flushed immediately for now)
+        self._removed = []
 
         # Oid that is being just being marked _p_changed for which
         # we don't want register() to freak out.
@@ -304,7 +308,7 @@ class Connection(object):
                         prop = ObjectProperty(name, field.schema)
                     else:
                         raise ValueError("Unknown property: %r" % field)
-                    self._addNode(prop, obj)
+                    self._registerAdded(prop, obj)
                     prop.setPythonValue(value)
                     obj._props[name] = prop
                 else:
@@ -323,7 +327,7 @@ class Connection(object):
 
         name = str(randrange(0, 2<<30)) # XXX better random id?
         node = ObjectProperty(name, obj.getValueSchema())
-        self._addNode(node, obj)
+        self._registerAdded(node, obj)
         obj._children[name] = node
         if obj._order is not None:
             obj._order.append(name)
@@ -342,20 +346,20 @@ class Connection(object):
         schema = self._db.getSchema(node_type)
         klass = self._db.getClass(node_type)
         child = klass(name, schema)
-        self._addNode(child, container)
+        self._registerAdded(child, container)
         return child
 
-    def deleteChild(self, container, name):
-        """Delete a child from a IContainerBase.
+    def deleteNode(self, obj):
+        """Delete a node.
         """
-        assert IContainerBase.providedBy(container), container
-        assert container._p_jar is self
-        poid = container._p_oid
-        assert poid is not None
+        assert obj._p_jar is self
+        oid = obj._p_oid
+        assert oid is not None
 
-        raise NotImplementedError
+        self._maybeJoin()
 
-
+        self._removed.append(oid)
+        self.savepoint()
 
     def _maybeJoin(self):
         """Join the current transaction if not yet done.
@@ -364,8 +368,8 @@ class Connection(object):
             self.transaction_manager.get().join(self)
             self._needs_to_join = False
 
-    def _addNode(self, obj, parent):
-        """Add a created node, give it an oid and register it.
+    def _registerAdded(self, obj, parent):
+        """Register a created node and give it a (temporary) oid.
         """
         self._maybeJoin()
 
@@ -373,7 +377,7 @@ class Connection(object):
         oid = 'T%d' % self._next_tmp_uuid
         self._next_tmp_uuid += 1
 
-        # Create the node
+        # Register the node
         obj.__parent__ = parent
         obj._p_oid = oid
         obj._p_jar = self
@@ -395,14 +399,15 @@ class Connection(object):
         assert oid is not None
         assert oid not in self._registered
 
+        # Modifying a just-created object
         if oid in self._added:
-            # Modifying a just-created object
             return
 
         self._maybeJoin()
 
         self._registered[oid] = set()
 
+        # Check for direct modifications not going through setProperty
         if self._manual_register != oid:
             print 'XXX illegal direct attr modification of', repr(obj)
 
@@ -465,8 +470,7 @@ class Connection(object):
         the bulk of the objects are committed.
         """
         self.savepoint()
-        # XXX send save/commit command
-
+        self.controller.commit()
 
     def tpc_vote(self, txn):
         """Verify that the transaction can be committed.
@@ -494,6 +498,7 @@ class Connection(object):
         Also called before tpc_abort in two-phase commit if this
         resource manager has not voted.
         """
+        self.controller.abort()
         for oid in self._modified:
             self._cache.invalidate(oid)
         for oid in self._registered:
@@ -533,6 +538,7 @@ class Connection(object):
         self._registered = {}
         self._added = {}
         self._added_order = []
+        self._removed = []
 
     ##################################################
     # Export/Import
@@ -767,9 +773,10 @@ class Connection(object):
             obj._p_changed = False
             self._modified.add(oid)
 
+        self._registered = {}
         self._added = {}
         self._added_order = []
-        self._registered = {}
+        self._removed = []
 
         return NoRollbackSavepoint()
 
@@ -788,13 +795,13 @@ class Connection(object):
             name = obj.__name__
             node_type = obj.getTypeName()
             props = self._collectSimpleProperties(obj)
-            command = ('add', puuid, name, node_type, props, oid)
-            yield command
+            yield ('add', puuid, name, node_type, props, oid)
         for oid, keys in self._registered.iteritems():
             obj = self._getFromCache(oid)
             props = self._collectProperties(obj, keys)
-            command = ('modify', oid, props)
-            yield command
+            yield ('modify', oid, props)
+        for oid in self._removed:
+            yield ('remove', oid)
 
     def _collectProperties(self, obj, keys, skip_none=False):
         """Collect properties to send in a command.

@@ -17,6 +17,7 @@
 """
 
 from zope.interface import Interface
+from ZODB.POSException import ConflictError # for reimport
 
 
 class ProtocolError(ValueError):
@@ -39,8 +40,18 @@ class IJCRController(Interface):
     def login(workspaceName):
         """Login to a given workspace.
 
-        This is the first command sent.
+        This is the first command sent. It creates a session on the
+        JCR side and puts it into a transaction.
+
         Returns the root node UUID.
+        """
+
+    def commit():
+        """Commit the current transaction, start a new one.
+        """
+
+    def abort():
+        """Abort the current transaction, start a new one.
         """
 
     def getNodeTypeDefs():
@@ -95,8 +106,10 @@ class IJCRController(Interface):
         `commands` is an iterable returning tuples of the form:
         - 'add', parent_uuid, name, node_type, props_mapping, token
         - 'modify', uuid, props_mapping
-        - 'remove', uuid XXX
+        - 'remove', uuid
         - 'order' XXX
+
+        A JCR save() is done after the commands have been sent.
 
         Returns a mapping of token -> uuid, which gives the new UUIDs
         for created nodes.
