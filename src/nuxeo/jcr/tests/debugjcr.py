@@ -53,54 +53,51 @@ from org.apache.jackrabbit.core import TransientRepository
 
 
 NAMESPACES = [
-    ('cpsnt', 'http://nuxeo.org/jcr/1.0/cpsnt/'),
-    ('cpss', 'http://nuxeo.org/jcr/1.0/cpss/'),
-    ('cpst', 'http://nuxeo.org/jcr/1.0/cpst/'),
-    ('cpsd', 'http://nuxeo.org/jcr/1.0/cpsd/'),
-    ('cps', 'http://nuxeo.org/jcr/1.0/cps/'),
+    ('ecm', 'http://nuxeo.org/ecm/jcr/names'),
+    ('ecmnt', 'http://nuxeo.org/ecm/jcr/types'),
+    ('ecmst', 'http://nuxeo.org/ecm/jcr/schemas'),
+    ('ecmdt', 'http://nuxeo.org/ecm/jcr/docs'),
+    ('dc', 'http://purl.org/dc/elements/1.1/'),
     ]
 
 NODETYPEDEFS = """
-<cpsnt='http://nuxeo.org/jcr/1.0/cpsnt/'>
-<cpss='http://nuxeo.org/jcr/1.0/cpss/'>
-<cpst='http://nuxeo.org/jcr/1.0/cpst/'>
-<cpsd='http://nuxeo.org/jcr/1.0/cpsd/'>
-<cps='http://nuxeo.org/jcr/1.0/cps/'>
-
-// complex type base
-[cpsnt:type]
+<ecm='http://nuxeo.org/ecm/jcr/names'>
+<ecmnt='http://nuxeo.org/ecm/jcr/types'>
+<ecmst='http://nuxeo.org/ecm/jcr/schemas'>
+<ecmdt='http://nuxeo.org/ecm/jcr/docs'>
+<dc='http://purl.org/dc/elements/1.1/'>
 
 // schema base
-[cpsnt:schema]
+[ecmnt:schema]
 
 // document
-[cpsnt:document]
+[ecmnt:document]
 
 // non-orderable  folder
-[cpsnt:folder] > cpsnt:document
-  + * (cpsnt:document)
+[ecmnt:folder] > ecmnt:document
+  + * (ecmnt:document)
 
 // dublin core
-[cpss:dublincore] > cpsnt:schema
-  - cps:title
-  - cps:description (String)
+[ecmst:dublincore] > ecmnt:schema
+  - dc:title
+  - dc:description (String)
 
 ////////// example
 
 // a complex type for firstname+lastname
-[cpst:name] > cpsnt:type
-  - cps:firstname (String)
-  - cps:lastname (String)
+[ecmst:name] > ecmnt:schema
+  - firstname (String)
+  - lastname (String)
 
 // the schema for the tripreport part
-[cpss:tripreport] > cpsnt:schema
-  - cps:duedate (Date)
-  - cps:cities (String) multiple
-  + cps:username (cpst:name)
-  + cps:childrennames (cpst:name) multiple
+[ecmst:tripreport] > ecmnt:schema
+  - duedate (Date)
+  - cities (String) multiple
+  + username (ecmst:name)
+  + childrennames (ecmst:name) multiple
 
 // a full document type
-[cpsd:tripreport] > cpsnt:document, cpss:tripreport, cpss:dublincore
+[ecmdt:tripreport] > ecmnt:document, ecmst:tripreport, ecmst:dublincore
 
 """
 
@@ -168,7 +165,7 @@ def checkNodeTypeDefs(session):
     workspace = session.getWorkspace()
     ntm = workspace.getNodeTypeManager()
     try:
-        ntm.getNodeType('cpsnt:document')
+        ntm.getNodeType('ecmnt:document')
         return
     except:
         # NoSuchNodeTypeException, UnknownPrefixException
@@ -203,10 +200,16 @@ class Listener(javax.jcr.observation.EventListener):
     def onEvent(self, events):
         while events.hasNext():
             event = events.nextEvent()
-            print '%s: event %-16s path %s' % (
+            type = event.getType()
+            if type in (NODE_ADDED, NODE_REMOVED):
+                childid = event.getChildId().toString()
+            else:
+                childid = ''
+            print '%s: event %-16s path %s (%s)' % (
                 self.name,
                 self.eventString(event.getType()),
-                event.getPath())
+                event.getPath(),
+                childid)
 
 class Main:
 
@@ -256,12 +259,21 @@ class Main:
         # session 1
         print 'deleting'
         root = session.getRootNode()
-        if root.hasNode('blob'):
+        while root.hasNode('blob'):
             node = root.getNode('blob')
             node.remove()
             #root.save()
         print 'adding'
-        blob = root.addNode('blob', 'nt:unstructured')
+        blob1 = root.addNode('blob', 'nt:unstructured')
+        #print 'added', blob1.getUUID()
+        blob2 = root.addNode('blob', 'nt:unstructured')
+        #print 'added', blob2.getUUID()
+        root.save()
+        print 'setting prop'
+        blob1.setProperty('youpi', 'true', javax.jcr.PropertyType.BOOLEAN)
+        blob2.setProperty('hoho', 'false', javax.jcr.PropertyType.BOOLEAN)
+        root.orderBefore('blob[2]', 'blob[1]')
+        root.save()
         if 0:
             print 'add mixin'
             blob.addMixin('mix:versionable')
@@ -272,10 +284,9 @@ class Main:
             blob.checkin()
             print 'checkout'
             blob.checkout()
-        print 'setting prop'
-        blob.setProperty('youpi', 'true', javax.jcr.PropertyType.BOOLEAN)
         print 'setting subnode'
-        node = blob.addNode('under', 'nt:unstructured')
+        node = blob1.addNode('under', 'nt:unstructured')
+        #print 'added', node.getUUID()
         print 'saving'
         root.save()
 
@@ -291,7 +302,7 @@ if __name__ == '__main__':
     repository = TransientRepository(repoconf, repopath)
 
     Main(repository, workspaceName).main()
-
+    sys.stdout.flush()
 
 
 if 0:
