@@ -237,6 +237,9 @@ Objects can be removed from containers::
     >>> [c.getName() for c in root.getChildren()]
     ['atrip']
     >>> foo = root.addChild('foo', 'tripreport')
+    >>> tm.commit()
+
+    >>> txn = tm.begin()
     >>> [c.getName() for c in root.getChildren()]
     ['atrip', 'foo']
     >>> root.removeChild('foo')
@@ -244,6 +247,31 @@ Objects can be removed from containers::
     ['atrip']
     >>> tm.commit()
 
+    >>> txn = tm.begin()
+    >>> [c.getName() for c in root.getChildren()]
+    ['atrip']
+
+An abort after removal is correctly rolled back::
+
+    >>> txn = tm.begin()
+    >>> foo = root.addChild('foo', 'tripreport')
+    >>> [c.getName() for c in root.getChildren()]
+    ['atrip', 'foo']
+    >>> tm.abort()
+    >>> [c.getName() for c in root.getChildren()]
+    ['atrip']
+
+List modifications
+------------------
+
+Objects in a list can be removed::
+
+    >>> del friends[0]
+    >>> list(friends)
+    ... #doctest: +ELLIPSIS
+    [<ObjectProperty at /atrip/friends/...>]
+    >>> sorted(friends[0].getProperties().items())
+    [('first', u'David'), ('last', u'Palmer')]
 
 
 Sanity checks

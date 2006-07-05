@@ -384,6 +384,13 @@ class Connection(object):
         self._added[oid] = obj
         self._added_order.append(oid)
 
+        # Mark parent changed
+        try:
+            self._manual_register = parent._p_oid
+            parent._p_changed = True
+        finally:
+            self._manual_register = None
+
     def register(self, obj):
         """Register obj as modified.
 
@@ -503,8 +510,7 @@ class Connection(object):
             self._cache.invalidate(oid)
         for oid in self._registered:
             self._cache.invalidate(oid)
-        for oid, obj in self._added.iteritems():
-            del self._added[oid]
+        for obj in self._added.itervalues():
             del obj._p_jar
             del obj._p_oid
         for oid in self._created:
