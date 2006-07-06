@@ -18,7 +18,7 @@
 
 import threading
 from ZODB.DB import DB as ZODBDB
-from zope.schema.interfaces import IList
+from zope.app.container.interfaces import IContainer
 from nuxeo.capsule.interfaces import IDocument
 from nuxeo.capsule.interfaces import IWorkspace
 from nuxeo.capsule.interfaces import IObjectBase
@@ -27,6 +27,7 @@ from nuxeo.jcr.impl import Children
 from nuxeo.jcr.impl import Document
 from nuxeo.jcr.impl import Workspace
 from nuxeo.jcr.impl import ObjectProperty
+from nuxeo.jcr.impl import ListProperty
 from nuxeo.jcr.connection import Connection
 from nuxeo.jcr.controller import JCRController
 
@@ -93,17 +94,15 @@ class DB(ZODBDB):
         defs = controller.getNodeTypeDefs()
         sm.addCND(defs)
 
-        # Set classes for document/schema nodes
-        for name, schema in sm.getSchemas().iteritems():
-            if schema.isOrExtends(IWorkspace):
-                sm.setClass(name, Workspace)
-            elif schema.isOrExtends(IDocument):
-                sm.setClass(name, Document)
-            elif schema.isOrExtends(IObjectBase):
-                sm.setClass(name, ObjectProperty)
+        # XXX use a schema of ours, and distinguish dict from list
+        sm.addSchema('IContainer', IContainer)
 
-        # Children
+        # Set base classes
+        sm.setClass('rep:root', Workspace)
+        sm.setClass('ecmnt:document', Document)
+        sm.setClass('ecmnt:schema', ObjectProperty)
         sm.setClass('ecmnt:children', Children)
+        sm.setClass('IContainer', ListProperty)
 
         return sm
 

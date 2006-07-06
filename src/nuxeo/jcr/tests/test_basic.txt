@@ -30,12 +30,13 @@ Let's see what types and schemas are available, and check their classes::
     >>> sm = conn.getSchemaManager()
     >>> sorted(sm.getSchemas().keys())
     ... #doctest: +NORMALIZE_WHITESPACE
-    ['ecmnt:children', 'ecmnt:document', 'ecmnt:schema',
+    ['IContainer', 'ecmnt:children', 'ecmnt:document', 'ecmnt:schema',
      'ecmst:dublincore',
      'ecmst:name', 'ecmst:names',
      'ecmst:place', 'ecmst:places',
      'ecmst:tripreport',
-     'rep:root', 'tripreport']
+     'rep:root',
+     'tripreport']
     >>> sm.getClass('ecmst:name')
     <class 'nuxeo.jcr.impl.ObjectProperty'>
     >>> sm.getClass('ecmst:dublincore')

@@ -227,7 +227,13 @@ class ListProperty(ContainerBase, ObjectBase, CapsuleListProperty):
     def addValue(self):
         """Create one item for the list.
         """
-        return self._p_jar.addValue(self)
+        item = self._p_jar.newValue(self)
+        name = item.getName()
+        self._children[name] = item
+        if self._order is not None:
+            self._order.append(name)
+        return item
+
 
 class ObjectProperty(ObjectBase, CapsuleObjectProperty):
     """JCR-specific object property.

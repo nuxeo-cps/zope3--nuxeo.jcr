@@ -767,6 +767,7 @@ class InterfaceMaker(object):
             bases = tuple([self._interfaces[sup]
                            for sup in info['supertypes']])
             # Containers use IContainer, the rest Interface
+            # XXX differentiate between container (dict) and list
             if is_container:
                 bases += (IContainer,)
                 # Add a __setitem__ so that we can use its precondition

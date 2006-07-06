@@ -45,14 +45,10 @@ from nuxeo.capsule.interfaces import IChildren
 from nuxeo.capsule.interfaces import IProperty
 from nuxeo.capsule.interfaces import IListProperty
 from nuxeo.capsule.interfaces import ICapsuleField
-from nuxeo.capsule.interfaces import IListPropertyField
-from nuxeo.capsule.interfaces import IObjectPropertyField
 
 from nuxeo.jcr.impl import Document
 from nuxeo.jcr.impl import ContainerBase
-from nuxeo.jcr.impl import Children
 from nuxeo.jcr.impl import NoChildrenYet
-from nuxeo.jcr.impl import ListProperty
 from nuxeo.jcr.impl import ObjectProperty
 
 _MARKER = object()
@@ -104,9 +100,8 @@ class Connection(object):
     - a ghost synthesized as the child of a previously fetched object,
       it exists in the storage and is added to _cache,
 
-    - a new object created when a node is added through
-      _registerAdded(), it doesn't exist in the storage and is added to
-      _added,
+    - a new object created when a node is added through _addNode(), it
+      doesn't exist in the storage and is added to _added,
 
     - a full object fetched from storage through the get(oid) API (used
       normally only for debugging), it is added to _cache.
@@ -297,29 +292,19 @@ class Connection(object):
                     self._prop_changed(obj, name)
             else:
                 # No previous value, create one
+                assert not IProperty.providedBy(value), value
                 field = obj.getSchema()[name]
                 if ICapsuleField.providedBy(field):
-                    if IProperty.providedBy(value):
-                        # XXX do we allow this?
-                        raise ValueError("Must create %r from simple types"
-                                         % name)
-                    if IListPropertyField.providedBy(field):
-                        prop = ListProperty(name, field.schema)
-                    elif IObjectPropertyField.providedBy(field):
-                        prop = ObjectProperty(name, field.schema)
-                    else:
-                        raise ValueError("Unknown property: %r" % field)
-                    self._registerAdded(prop, obj)
+                    prop = self._addNode(obj, name, field.schema)
                     prop.setPythonValue(value)
                     obj._props[name] = prop
                 else:
                     # Setting a new non-IProperty
-                    assert not IProperty.providedBy(value), value
                     obj._props[name] = value
                     self._prop_changed(obj, name)
 
-    def addValue(self, obj):
-        """Create an item in a ListProperty.
+    def newValue(self, obj):
+        """Create a new item for a ListProperty.
         """
         assert IListProperty.providedBy(obj)
         assert obj._p_jar is self
@@ -327,12 +312,8 @@ class Connection(object):
         assert oid is not None
 
         name = str(randrange(0, 2<<30)) # XXX better random id?
-        node = ObjectProperty(name, obj.getValueSchema())
-        self._registerAdded(node, obj)
-        obj._children[name] = node
-        if obj._order is not None:
-            obj._order.append(name)
-        return node
+        schema = obj.getValueSchema()
+        return self._addNode(obj, name, schema)
 
     def createChild(self, container, name, node_type):
         """Create a child in a IContainerBase.
@@ -345,10 +326,7 @@ class Connection(object):
         assert poid is not None
 
         schema = self._db.getSchema(node_type)
-        klass = self._db.getClass(node_type)
-        child = klass(name, schema)
-        self._registerAdded(child, container)
-        return child
+        return self._addNode(container, name, schema)
 
     def deleteNode(self, obj):
         """Delete a node.
@@ -396,10 +374,16 @@ class Connection(object):
             self.transaction_manager.get().join(self)
             self._needs_to_join = False
 
-    def _registerAdded(self, obj, parent):
-        """Register a created node and give it a (temporary) oid.
+    def _addNode(self, parent, name, schema):
+        """Create and register a new node
+
+        Give it a (temporary) oid.
         """
         self._maybeJoin()
+
+        # Create instance
+        klass = self._db.getClass(schema.getName())
+        obj = klass(name, schema)
 
         # Make a temporary oid
         oid = 'T%d' % self._next_tmp_uuid
@@ -412,12 +396,15 @@ class Connection(object):
         self._added[oid] = obj
         self._added_order.append(oid)
 
-        # Mark parent changed
+        # Mark parent changed # XXX should mark only for invalidation
         try:
             self._manual_register = parent._p_oid
             parent._p_changed = True
         finally:
             self._manual_register = None
+
+        return obj
+
 
     def register(self, obj):
         """Register obj as modified.
@@ -675,7 +662,7 @@ class Connection(object):
             state = self._loadObjectState(oid, full_document=True)
         elif issubclass(klass, ContainerBase):
             state = self._loadContainerState(oid)
-        elif klass is ObjectProperty:
+        elif issubclass(klass, ObjectProperty):
             state = self._loadObjectState(oid)
         else:
             raise ValueError("Unknown class %s.%s" %
