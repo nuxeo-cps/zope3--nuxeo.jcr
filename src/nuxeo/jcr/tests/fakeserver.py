@@ -88,7 +88,26 @@ class FakeJCR(object):
             parent.children = [n for n in parent.children
                                if n[1] != uuid]
 
+    def reorderChildren(self, uuid, inserts):
+        try:
+            children = self.data[uuid].children
+        except KeyError:
+            raise ProtocolError(uuid)
+        names = [c[0] for c in children]
+        for name, before in inserts:
+            # Move `name` before `before`
+            i = names.index(name)
+            j = names.index(before)
+            assert j < i
+            x = children.pop(i)
+            children.insert(j, x)
+            # Do that in names too
+            names.pop(i)
+            names.insert(j, name)
+
     def getPath(self, uuid, name=None):
+        """For error display.
+        """
         path = []
         if name is not None:
             path.append(name)
@@ -98,19 +117,6 @@ class FakeJCR(object):
             uuid = node.parent_uuid
         return '/'.join(reversed(path))
 
-class JCRWalker(object):
-    def __init__(self, storage):
-        self.storage = storage
-
-    def walk(self):
-        return self._walk(self.storage.root_uuid)
-
-    def _walk(self, uuid):
-        node = self.storage.data[uuid]
-        yield (uuid, node)
-        for name, uuid in node.children:
-            for info in _walk(uuid):
-                yield info
 
 class Merger(object):
     """3-way merge of storages.
@@ -316,6 +322,11 @@ class FakeJCRController(object):
                 if uuid in map:
                     uuid = map[uuid]
                 self.storage.removeNode(uuid)
+            elif op == 'reorder':
+                uuid, inserts = command[1:]
+                if uuid in map:
+                    uuid = map[uuid]
+                self.storage.reorderChildren(uuid, inserts)
             else:
                 raise ProtocolError("invalid op %r" % (op,))
         return map

@@ -46,9 +46,18 @@
   - first (String)
   - last (String)
 
+# a complex type for place
+[ecmst:place] > ecmnt:schema
+  - p (String)
+
 # list of names
 [ecmst:names] > ecmnt:schema
   + * (ecmst:name)
+
+# list of places
+[ecmst:places] > ecmnt:schema
+  // XXX orderable!!
+  + * (ecmst:place)
 
 # the schema for the tripreport part
 [ecmst:tripreport] > ecmnt:schema
@@ -57,7 +66,7 @@
   + name (ecmst:name)
   + friends (ecmst:names)
   + mother (ecmst:name)
-
+  + places (ecmst:places)
 
 # a full document type
 [tripreport] > ecmnt:document, ecmst:tripreport, ecmst:dublincore

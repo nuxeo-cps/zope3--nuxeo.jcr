@@ -73,12 +73,22 @@ class ContainerBase(CapsuleContainerBase):
         if self._order is not None:
             self._order.remove(name)
 
+    def clear(self):
+        """See `nuxeo.capsule.interfaces.IContainerBase`
+        """
+        for child in self._children.itervalues():
+            self._p_jar.deleteNode(child)
+        self._children.clear()
+        if self._order is not None:
+            self._order[:] = []
+
     def reorder(self, names):
         """See `nuxeo.capsule.interfaces.IContainerBase`
         """
-        if self._order == names:
-            return
-        raise NotImplementedError # XXX call _p_jar
+        if self._order is None:
+            raise TypeError("Unordered container")
+        self._p_jar.reorderChildren(self, self._order, names)
+        self._order[:] = names
 
 
 class NoChildrenYet(object):

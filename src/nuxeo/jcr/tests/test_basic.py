@@ -17,7 +17,7 @@
 """
 
 import unittest
-from zope.testing.doctest import DocFileTest
+from zope.testing import doctest
 from zope.interface.verify import verifyClass
 
 class InterfaceTests(unittest.TestCase):
@@ -43,7 +43,9 @@ def test_suite():
     testdir = os.path.dirname(nuxeo.jcr.tests.__file__)
     return unittest.TestSuite((
         unittest.makeSuite(InterfaceTests),
-        DocFileTest('test_basic.txt', globs=dict(testdir=testdir)),
+        doctest.DocFileTest('test_basic.txt',
+                            globs=dict(testdir=testdir),
+                            optionflags=doctest.ELLIPSIS),
         ))
 
 if __name__ == '__main__':

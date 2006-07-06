@@ -145,7 +145,7 @@ class Connection(object):
 
         self._db = db
         # Multi-database support
-        self.connections = {self._db.database_name: self}
+        self.connections = {db.database_name: self}
 
         self._needs_to_join = True
         self.transaction_manager = None
@@ -175,8 +175,9 @@ class Connection(object):
         # List of oids of added objects
         self._added_order = []
 
-        # List of oids to remove (flushed immediately for now)
-        self._removed = []
+        # Additional commands to send after savepoint/commit
+        # Used for removes or reorderings
+        self._commands = []
 
         # Oid that is being just being marked _p_changed for which
         # we don't want register() to freak out.
@@ -358,7 +359,34 @@ class Connection(object):
 
         self._maybeJoin()
 
-        self._removed.append(oid)
+        self._commands.append(('remove', oid))
+        self.savepoint()
+
+    def reorderChildren(self, obj, old, new):
+        """Reorder children.
+
+        `old` and `new` are lists of names.
+        """
+        assert IContainerBase.providedBy(obj), obj
+        assert obj._p_jar is self
+        oid = obj._p_oid
+        assert oid is not None
+
+        # Fast case, avoid extra work
+        if old == new:
+            return
+
+        self._maybeJoin()
+
+        # Mark object changed
+        try:
+            self._manual_register = oid
+            obj._p_changed = True
+        finally:
+            self._manual_register = None
+
+        inserts = findInserts(old, new)
+        self._commands.append(('reorder', oid, inserts))
         self.savepoint()
 
     def _maybeJoin(self):
@@ -433,9 +461,6 @@ class Connection(object):
             self._manual_register = None
 
         self._registered[oid].add(name)
-
-    def remove(self, obj):
-        raise NotImplementedError
 
     ##################################################
     # ISynchronizer (we register ourselves when the connection is opened)
@@ -541,10 +566,8 @@ class Connection(object):
         #    self._flush_invalidations() # XXX invalidations
 
         self._needs_to_join = True
-        self._registered = {}
-        self._added = {}
-        self._added_order = []
-        self._removed = []
+
+        self._cleanup_savepoint()
 
     ##################################################
     # Export/Import
@@ -779,12 +802,15 @@ class Connection(object):
             obj._p_changed = False
             self._modified.add(oid)
 
+        self._cleanup_savepoint()
+
+        return NoRollbackSavepoint()
+
+    def _cleanup_savepoint(self):
         self._registered = {}
         self._added = {}
         self._added_order = []
-        self._removed = []
-
-        return NoRollbackSavepoint()
+        self._commands = []
 
     def _saveCommands(self):
         """Generator returning the commands to save the modifications.
@@ -792,8 +818,8 @@ class Connection(object):
         Commands are a tuple, which can be:
         - 'add', parent_uuid, name, node_type, props_mapping, token
         - 'modify', uuid, props_mapping
-        - 'remove', uuid XXX
-        - 'order' XXX
+        - 'remove', uuid
+        - 'reorder', uuid, reordering_list
         """
         for oid in self._added_order:
             obj = self._added[oid]
@@ -806,8 +832,8 @@ class Connection(object):
             obj = self._getFromCache(oid)
             props = self._collectProperties(obj, keys)
             yield ('modify', oid, props)
-        for oid in self._removed:
-            yield ('remove', oid)
+        for command in self._commands:
+            yield command
 
     def _collectProperties(self, obj, keys, skip_none=False):
         """Collect properties to send in a command.
@@ -844,3 +870,29 @@ class Connection(object):
 class NoRollbackSavepoint(object):
     def rollback(self):
         raise TypeError("Savepoint rollback unsupported")
+
+
+def findInserts(old, new):
+    """Find the 'insertBefore' commands needed to turn `old` into `new`.
+    """
+    if set(old) != set(new):
+        raise ValueError("Names mismatch (%r to %r)" % (old, new))
+    old = list(old)
+    new = list(new)
+    inserts = []
+    # Change old until it's equal to new
+    # FIXME: stupid quadratic algorithm
+    while old != new:
+        for i, name in enumerate(new):
+            n = old[i]
+            # Find first difference
+            if n != name:
+                # Put name at position i in old
+                inserts.append((name, n)) # insert name before n
+                # Replay that in old
+                assert old.index(name) > i
+                old.remove(name)
+                old.insert(i, name)
+                break
+    return inserts
+
