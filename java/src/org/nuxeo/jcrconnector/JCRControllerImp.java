@@ -75,7 +75,8 @@ public class JCRControllerImp extends _JCRControllerDisp {
                 al.add(ntr.getNodeTypeDef(qname));
 
             StringWriter sw = new StringWriter();
-            CompactNodeTypeDefWriter.write(al, nsr, sw);
+
+            new CompactNodeTypeDefWriter(al, nsr, sw).write();
             return sw.toString();
         } catch (RepositoryException e) {
             throw new JCRRepositoryException(e.toString());
