@@ -48,10 +48,6 @@ import java.nio.charset
 import java.nio.channels
 from java.nio.channels import SelectionKey
 
-from org.apache.jackrabbit.core import TransientRepository
-from org.apache.jackrabbit.core.nodetype.compact import \
-     CompactNodeTypeDefWriter
-
 import javax.jcr
 import javax.jcr.observation.EventListener
 from javax.jcr.observation.Event import NODE_ADDED
@@ -60,58 +56,14 @@ from javax.jcr.observation.Event import PROPERTY_ADDED
 from javax.jcr.observation.Event import PROPERTY_REMOVED
 from javax.jcr.observation.Event import PROPERTY_CHANGED
 
+from javax.transaction.xa import XAResource
+from javax.transaction.xa import XAException
+from javax.transaction.xa import Xid
 
-NAMESPACES = [
-    ('cpsnt', 'http://nuxeo.org/jcr/1.0/cpsnt/'),
-    ('cpss', 'http://nuxeo.org/jcr/1.0/cpss/'),
-    ('cpst', 'http://nuxeo.org/jcr/1.0/cpst/'),
-    ('cpsd', 'http://nuxeo.org/jcr/1.0/cpsd/'),
-    ('cps', 'http://nuxeo.org/jcr/1.0/cps/'),
-    ]
-
-NODETYPEDEFS = """
-<cpsnt='http://nuxeo.org/jcr/1.0/cpsnt/'>
-<cpss='http://nuxeo.org/jcr/1.0/cpss/'>
-<cpst='http://nuxeo.org/jcr/1.0/cpst/'>
-<cpsd='http://nuxeo.org/jcr/1.0/cpsd/'>
-<cps='http://nuxeo.org/jcr/1.0/cps/'>
-
-// complex type base
-[cpsnt:type]
-
-// schema base
-[cpsnt:schema]
-
-// document
-[cpsnt:document]
-
-// non-orderable  folder
-[cpsnt:folder] > cpsnt:document
-  + * (cpsnt:document)
-
-// dublin core
-[cpss:dublincore] > cpsnt:schema
-  - cps:title
-  - cps:description (String)
-
-////////// example
-
-// a complex type for firstname+lastname
-[cpst:name] > cpsnt:type
-  - cps:firstname (String)
-  - cps:lastname (String)
-
-// the schema for the tripreport part
-[cpss:tripreport] > cpsnt:schema
-  - cps:duedate (Date)
-  - cps:cities (String) multiple
-  + cps:username (cpst:name)
-  + cps:childrennames (cpst:name) multiple
-
-// a full document type
-[cpsd:tripreport] > cpsnt:document, cpss:tripreport, cpss:dublincore
-
-"""
+from org.apache.jackrabbit.core import TransientRepository
+from org.apache.jackrabbit.core.nodetype.compact import \
+     CompactNodeTypeDefWriter
+from org.apache.jackrabbit.core import XASession
 
 
 try:
@@ -119,6 +71,57 @@ try:
 except NameError:
     True = 1
     False = 0
+
+
+NAMESPACES = [
+    ('ecm', 'http://nuxeo.org/ecm/jcr/names'),
+    ('ecmnt', 'http://nuxeo.org/ecm/jcr/types'),
+    ('ecmst', 'http://nuxeo.org/ecm/jcr/schemas'),
+    ('ecmdt', 'http://nuxeo.org/ecm/jcr/docs'),
+    ('dc', 'http://purl.org/dc/elements/1.1/'),
+    ]
+
+NODETYPEDEFS = """
+<ecm='http://nuxeo.org/ecm/jcr/names'>
+<ecmnt='http://nuxeo.org/ecm/jcr/types'>
+<ecmst='http://nuxeo.org/ecm/jcr/schemas'>
+<ecmdt='http://nuxeo.org/ecm/jcr/docs'>
+<dc='http://purl.org/dc/elements/1.1/'>
+
+// schema base
+[ecmnt:schema]
+
+// document
+[ecmnt:document]
+
+// non-orderable  folder
+[ecmnt:folder] > ecmnt:document
+  + * (ecmnt:document)
+
+// dublin core
+[ecmst:dublincore] > ecmnt:schema
+  - dc:title
+  - dc:description (String)
+
+////////// example
+
+// a complex type for firstname+lastname
+[ecmst:name] > ecmnt:schema
+  - firstname (String)
+  - lastname (String)
+
+// the schema for the tripreport part
+[ecmst:tripreport] > ecmnt:schema
+  - duedate (Date)
+  - cities (String) multiple
+  + username (ecmst:name)
+  + childrennames (ecmst:name) multiple
+
+// a full document type
+[ecmdt:tripreport] > ecmnt:document, ecmst:tripreport, ecmst:dublincore
+
+"""
+
 
 
 
@@ -177,39 +180,34 @@ class Listener(javax.jcr.observation.EventListener):
                 event.getPath())
 
 
+class DummyXid(Xid):
+    def getBranchQualifier(self):
+        return []
+    def getFormatId(self):
+        return 0
+    def getGlobalTransactionId(self):
+        return []
+
+
 class Processor:
     """Command line processor, tied to a JCR Session.
     """
 
     session = None
     root = None
+    prepared = False
 
     def __init__(self, io, repository):
         self.io = io
         self.repository = repository
         self.state = 0
 
-    def login(self, workspaceName):
-        self.session = self.repository.login(credentials, workspaceName)
-        om = self.session.getWorkspace().getObservationManager()
-        listener = Listener(self, workspaceName)
-        eventTypes = (NODE_ADDED | NODE_REMOVED |
-                      PROPERTY_ADDED | PROPERTY_REMOVED | PROPERTY_CHANGED)
-        isDeep = True
-        noLocal = False
-        om.addEventListener(listener, eventTypes, '/',
-                            isDeep, None, None, noLocal)
-
-    def logout(self):
-        # XXX Should flush before closing
-        if self.session is not None:
-            self.session.logout()
-
     def write(self, s):
         self.io.write(s)
 
     def writeln(self, s):
         self.io.write(s+'\n')
+
 
     def cmdHelp(self, line=None):
         self.writeln("Available commands:")
@@ -219,9 +217,105 @@ class Processor:
             func, desc = self.commands[cmd]
             self.writeln("  %s: %s" % (cmd, desc))
 
+
+    def cmdLogin(self, workspaceName):
+        if self.session is not None:
+            return self.writeln("!Already logged in.")
+        try:
+            self.login(workspaceName)
+        except javax.jcr.NoSuchWorkspaceException:
+            return self.writeln("!No such workspace '%s'." % workspaceName)
+        self.root = self.session.getRootNode()
+        self.checkRepositoryInit()
+        self.writeln('^'+self.root.getUUID())
+
+    def login(self, workspaceName):
+        session = self.repository.login(credentials, workspaceName)
+        xaresource = session.getXAResource()
+        xid = DummyXid()
+        self.session = session
+        self.xaresource = xaresource
+        self.xid = xid
+
+        self.new()
+
+        om = self.session.getWorkspace().getObservationManager()
+        listener = Listener(self, workspaceName)
+        eventTypes = (NODE_ADDED | NODE_REMOVED |
+                      PROPERTY_ADDED | PROPERTY_REMOVED | PROPERTY_CHANGED)
+        isDeep = True
+        noLocal = False
+        om.addEventListener(listener, eventTypes, '/',
+                            isDeep, None, None, noLocal)
+
+
+    def new(self, end=None):
+        self.xaresource.start(self.xid, XAResource.TMNOFLAGS)
+        self.prepared = False
+
+    def _trapXAException(self, func, *args):
+        try:
+            func(*args)
+        except XAException, e:
+            msg = e.getMessage() or 'XAException %s' % e.errorCode
+            e = e.getCause()
+            while e is not None:
+                m = e.getMessage()
+                if m is not None:
+                    msg = m
+                    if msg.endswith(' has been modified externally'):
+                        break
+                e = e.getCause()
+            return "!"+msg
+        return None
+
+    def cmdPrepare(self, line=None):
+        # Note that there is a default timeout of 5s after prepare
+        if self.prepared:
+            return self.writeln("!Already prepared.")
+        msg = self._trapXAException(self.xaresource.prepare, self.xid)
+        if msg is not None:
+            self.xaresource.end(self.xid, XAResource.TMFAIL)
+            self.rollback()
+            self.new()
+        else:
+            msg = '.'
+            self.prepared = True
+        self.writeln(msg)
+
+    def cmdCommit(self, line=None):
+        if not self.prepared:
+            return self.writeln("!Not prepared.")
+        # End association before commit
+        self.xaresource.end(self.xid, XAResource.TMSUCCESS)
+        msg = self._trapXAException(self.xaresource.commit, self.xid, False)
+        if msg is not None:
+            self.rollback()
+        else:
+            msg = '.'
+        self.new()
+        self.writeln(msg)
+
+    def cmdRollback(self, line=None):
+        # End association before rollback
+        self.xaresource.end(self.xid, XAResource.TMFAIL)
+        msg = self.rollback()
+        if msg is None:
+            msg = '.'
+        self.new()
+        self.writeln(msg)
+
+    def rollback(self):
+        return self._trapXAException(self.xaresource.rollback, self.xid)
+
     def cmdQuit(self, line=None):
         self.logout()
         self.io.close()
+
+    def logout(self):
+        self._trapXAException(self.rollback)
+        if self.session is not None:
+            self.session.logout()
 
     def cmdStop(self, line=None):
         raise SystemExit
@@ -230,7 +324,7 @@ class Processor:
         if self.root is None:
             return self.writeln("!Not logged in.")
         dumpNode(self.root, '', self.write)
-        self.writeln(".")
+        self.writeln('.')
 
     def checkRepositoryInit(self):
         """Check that things are ok in the repository, after creation.
@@ -260,7 +354,7 @@ class Processor:
         workspace = self.session.getWorkspace()
         ntm = workspace.getNodeTypeManager()
         try:
-            ntm.getNodeType('cpsnt:document')
+            ntm.getNodeType('ecmnt:document')
             return
         except:
             # NoSuchNodeTypeException, UnknownPrefixException
@@ -294,17 +388,6 @@ class Processor:
         schema = self.dumpNodeTypes()
         self.write(schema)
         self.writeln('\n.')
-
-    def cmdLogin(self, workspaceName):
-        if self.session is not None:
-            return self.writeln("!Already logged in.")
-        try:
-            self.login(workspaceName)
-        except javax.jcr.NoSuchWorkspaceException:
-            return self.writeln("!No such workspace '%s'." % workspaceName)
-        self.root = self.session.getRootNode()
-        self.checkRepositoryInit()
-        self.writeln('^'+self.root.getUUID())
 
     def cmdGetNodeChildren(self, uuid):
         try:
@@ -372,6 +455,12 @@ class Processor:
                     self.dumpValue(prop.getValue())
         self.writeln('.')
 
+    def cmdSave(self, line=None):
+        if self.prepared:
+            return self.writeln("!Can only commit or rollback while prepared.")
+        self.session.save() # XXX exceptions?
+        self.writeln('.')
+
     def cmdGetNodeProperties(self, line):
         self.writeln('!XXX not implemented')
 
@@ -419,6 +508,10 @@ class Processor:
         'Q': (cmdStop, "Stop the server and all connections."),
         'd': (cmdDump, "Dump the repository."),
         'L': (cmdLogin, "Login to the given workspace."),
+        's': (cmdSave, "Save the transient work."),
+        'p': (cmdPrepare, "Prepare the transaction."),
+        'c': (cmdCommit, "Commit the prepared transaction."),
+        'r': (cmdRollback, "Rollback the transaction."),
         'T': (cmdGetNodeType, "Get the primary type of a given uuid."),
         'S': (cmdGetNodeStates, "Get the state of the given uuids."),
         'P': (cmdGetNodeProperties, "Get some properties of a given uuid."),
@@ -574,22 +667,3 @@ if __name__ == '__main__':
     repoconf = repopath+'.xml'
     port = int(sys.argv[2])
     run_server(repoconf, repopath, port)
-
-
-
-if 0:
-    node = root.addNode('toto', 'nt:unstructured')
-    node.addMixin('mix:versionable')
-    root.save()
-    node.checkin()
-
-if 0:
-    node = root.getNode('toto')
-    node.checkout()
-    node.setProperty('foo', 'hello bob')
-    root.save()
-    node.checkin()
-
-if 0:
-    dumpNode(root, '')
-
