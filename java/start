@@ -1,0 +1,27 @@
+#!/bin/sh
+jars=$HOME/java/lib
+
+cp=$jars/Ice-3.0.1.jar
+cp=$cp:$jars/commons-collections-3.1.jar
+cp=$cp:$jars/concurrent-1.3.4.jar
+cp=$cp:$jars/derby-10.1.1.0.jar
+cp=$cp:$jars/geronimo-spec-jta-1.0-M1.jar
+cp=$cp:$jars/jackrabbit-core-1.0.1.jar
+cp=$cp:$jars/jackrabbit-jcr-commons-1.0.1.jar
+cp=$cp:$jars/jcr-1.0.jar
+cp=$cp:$jars/junit-3.8.1.jar
+cp=$cp:$jars/log4j-1.2.8.jar
+cp=$cp:$jars/lucene-1.4.3.jar
+cp=$cp:$jars/slf4j-log4j12-1.0.jar
+cp=$cp:$jars/xercesImpl-2.6.2.jar
+cp=$cp:$jars/xmlParserAPIs-2.0.2.jar
+
+if [ -n "$CLASSPATH" ]; then
+    cp=$cp:$CLASSPATH
+fi
+
+HERE=`dirname $0`
+
+java -cp classes:$cp org.nuxeo.jcrconnector.Server "$@" --Ice.Config=$HERE/config
+
+# ./run.sh /full/path/to/repo /full/path/to/cnd.txt --Ice.Config=/full/path/to/config
