@@ -200,7 +200,9 @@ class Processor:
     def __init__(self, io, repository):
         self.io = io
         self.repository = repository
-        self.state = 0
+        self.continuations = []
+        self.command = None # current command being parsed by Multiple
+        self.commands = [] # parsed Multiple commands
 
     def write(self, s):
         self.io.write(s)
@@ -271,6 +273,8 @@ class Processor:
 
     def cmdPrepare(self, line=None):
         # Note that there is a default timeout of 5s after prepare
+        # XXX and if it triggers, it calls rollback() without ending
+        # the association so the next assocation will fail!
         if self.prepared:
             return self.writeln("!Already prepared.")
         msg = self._trapXAException(self.xaresource.prepare, self.xid)
@@ -455,12 +459,6 @@ class Processor:
                     self.dumpValue(prop.getValue())
         self.writeln('.')
 
-    def cmdSave(self, line=None):
-        if self.prepared:
-            return self.writeln("!Can only commit or rollback while prepared.")
-        self.session.save() # XXX exceptions?
-        self.writeln('.')
-
     def cmdGetNodeProperties(self, line):
         self.writeln('!XXX not implemented')
 
@@ -508,7 +506,6 @@ class Processor:
         'Q': (cmdStop, "Stop the server and all connections."),
         'd': (cmdDump, "Dump the repository."),
         'L': (cmdLogin, "Login to the given workspace."),
-        's': (cmdSave, "Save the transient work."),
         'p': (cmdPrepare, "Prepare the transaction."),
         'c': (cmdCommit, "Commit the prepared transaction."),
         'r': (cmdRollback, "Rollback the transaction."),
@@ -516,9 +513,11 @@ class Processor:
         'S': (cmdGetNodeStates, "Get the state of the given uuids."),
         'P': (cmdGetNodeProperties, "Get some properties of a given uuid."),
         'D': (cmdGetNodeTypeDefs, "Get the CND node type definitions."),
+        'M': (cmdMultiple, "Send multiple commands (+/=/-/%)."),
         }
 
-    def process(self, line):
+
+    def cmdCommand(self, line):
         print 'processing', repr(line)
         if not line: # XXX
             return
@@ -531,6 +530,38 @@ class Processor:
             func(self, rest)
         else:
             self.writeln("!Unknown command '%s'" % cmd)
+
+    def process(self, line):
+        if self.continuations:
+            continuation = self.continuations.pop()
+        else:
+            continuation = self.cmdCommand
+        continuation(line)
+
+    def cmdMultiple(self, line=None):
+        self.continuations.append(expectMultipleOne)
+
+    def expectMultipleOne(self, line):
+        op, rest = line[0], line[1:]
+        if op == '+': # add
+            raise NotImplementedError
+        elif op == '/': # modify
+            raise NotImplementedError
+        elif op == '-': # remove
+            raise NotImplementedError
+        elif op == '%': # reorder
+            raise NotImplementedError
+        elif op == '.': # end
+            return self.processCommands()
+            raise NotImplementedError
+        else:
+            self.continuations = []
+            return self.writeln("!Unknown multiple op '%s'" % op)
+
+    def processCommands(self):
+        self.continuations = []
+        
+
 
 class IO:
     """I/O manager, reads lines and passes them to a processor.

@@ -38,6 +38,11 @@
   - dc:title
   - dc:description
 
+// security attributes
+[ecmst:security] > ecmnt:schema
+  - ecm:security
+  - ecm:localroles
+
 
 /////////// example
 
@@ -69,4 +74,5 @@
   + places (ecmst:places)
 
 # a full document type
-[tripreport] > ecmnt:document, ecmst:tripreport, ecmst:dublincore
+[tripreport] > ecmnt:document, ecmst:tripreport, ecmst:dublincore,
+               ecmst:security

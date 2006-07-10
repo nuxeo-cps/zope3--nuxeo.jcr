@@ -19,6 +19,7 @@ Subclasses the default implementation to record JCR-specific
 information.
 """
 
+import logging
 from persistent import Persistent
 import zope.interface
 from nuxeo.capsule.base import IChildren
@@ -30,6 +31,8 @@ from nuxeo.capsule.base import Workspace as CapsuleWorkspace
 from nuxeo.capsule.base import ListProperty as CapsuleListProperty
 from nuxeo.capsule.base import ObjectProperty as CapsuleObjectProperty
 
+
+logger = logging.getLogger('nuxeo.jcr.impl')
 
 _MARKER = object()
 
@@ -43,11 +46,127 @@ class ObjectBase(CapsuleObjectBase):
     def setProperty(self, name, value):
         """See `nuxeo.capsule.interfaces.IObjectBase`
         """
+        self._p_jar.setProperty(self, name, value)
+
+        # Special properties
+        func = self.__setattr_special_properties__.get(name)
+        if func is not None:
+            func(self, value, self.__dict__)
+
+    #
+    # Special attribute (security mapping)
+    #
+
+    __ac_local_roles__ = None
+    __ac_local_group_roles__ = None
+
+    def _map_localroles_to_prop(self):
+        d = {}
+        for k, v in (self.__ac_local_roles__ or {}).iteritems():
+            d['user:'+k] = sorted(v)
+        for k, v in (self.__ac_local_group_roles__ or {}).iteritems():
+            d['group:'+k] = sorted(v)
+        l = []
+        for k, v in sorted(d.iteritems()):
+            l.append(k + '=' + ','.join(v))
+        s = ';'.join(l) or None
+        return 'ecm:localroles', s
+
+    def _map_security_to_prop(self):
+        # Collect all security
+        l = []
+        for k, v in self.__dict__.iteritems():
+            if k.startswith('_') and k.endswith('_Permission'):
+                if isinstance(v, list):
+                    l.append(k[1:-11] + '+=' + ','.join(sorted(v)))
+                else:
+                    l.append(k[1:-11] + '=' + ','.join(sorted(v)))
+        l.sort()
+        s = ';'.join(l) or None
+        return 'ecm:security', s
+
+    def _map_prop_to_localroles(self, value, state):
         try:
-            self._p_jar.setProperty(self, name, value)
-        except KeyError:
-            raise
-            raise KeyError("Schema has no property %r" % name)
+            u = {}
+            g = {}
+            for i in str(value or '').split(';'):
+                k, v = i.split('=')
+                if k.startswith('user:'):
+                    u[k[5:]] = v.split(',')
+                elif k.startswith('group:'):
+                    g[k[6:]] = v.split(',')
+                else:
+                    raise ValueError(k)
+        except ValueError:
+            #logger.debug("Illegal string %r for ecm:localroles", value)
+            raise ValueError("Illegal string %r for ecm:localroles" % value)
+        if u:
+            state['__ac_local_roles__'] = u
+        else:
+            state.pop('__ac_local_roles__', None)
+        if g:
+            state['__ac_local_group_roles__'] = g
+        else:
+            state.pop('__ac_local_group_roles__', None)
+
+    def _map_prop_to_security(self, value, state):
+        # Purge old state
+        for k, v in state.items():
+            if k.startswith('_') and k.endswith('_Permission'):
+                del state[k]
+        # Set new state
+        try:
+            for i in str(value or '').split(';'):
+                k, v = i.split('=')
+                if k[-1] == '+':
+                    k = k[:-1]
+                    r = v.split(',')
+                else:
+                    r = tuple(v.split(','))
+                state['_'+k+'_Permission'] = r
+        except ValueError:
+            raise ValueError("Illegal string %r for ecm:security" % value)
+
+    __setattr_special_attributes__ = {
+        '__ac_local_roles__': _map_localroles_to_prop,
+        '__ac_local_group_roles__': _map_localroles_to_prop,
+        }
+
+    __setattr_special_properties__ = {
+        'ecm:localroles': _map_prop_to_localroles,
+        'ecm:security': _map_prop_to_security,
+        }
+
+    def __setattr__(self, name, value):
+        """Transform special value into properties.
+        """
+        func = self.__setattr_special_attributes__.get(name)
+        if (func is None
+            and name.startswith('_')
+            and name.endswith('_Permission')):
+            func = self._map_security_to_prop.im_func
+        if func is not None:
+            self.__dict__[name] = value
+            k, v = func(self)
+            self._p_jar.setProperty(self, k, v)
+        else:
+            if not name.startswith('_p_') and self._p_jar is not None:
+                print "XXX illegal direct setattr(%s, %r, %r)" % (
+                    self.__class__.__name__, name, value)
+            super(ObjectBase, self).__setattr__(name, value)
+
+    def __delattr__(self, name):
+        func = self.__setattr_special_attributes__.get(name)
+        if (func is None
+            and name.startswith('_')
+            and name.endswith('_Permission')):
+            func = self._map_security_to_prop.im_func
+        if func is not None:
+            del self.__dict__[name]
+            k, v = func(self)
+            self._p_jar.setProperty(self, k, v)
+        else:
+            super(ObjectBase, self).__delattr__(name)
 
 
 class ContainerBase(CapsuleContainerBase):

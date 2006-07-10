@@ -259,7 +259,7 @@ class FakeJCRController(object):
         self.initial_storage = deepcopy(self.real_storage)
         self.storage = deepcopy(self.real_storage)
 
-    def commit(self):
+    def prepare(self):
         # Apply all changes, may raise a conflict error
         # Would be synchronized in real life but we're single threaded here
         initial = self.initial_storage
@@ -269,6 +269,10 @@ class FakeJCRController(object):
         # This is really a 3-way merge
         Merger(initial, current, new).merge()
         self._begin()
+
+    def commit(self):
+        # Each storage is single-threaded, prepare did all the work
+        pass
 
     def abort(self):
         self._begin()

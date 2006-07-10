@@ -46,8 +46,14 @@ class IJCRController(Interface):
         Returns the root node UUID.
         """
 
+    def prepare():
+        """Prepare the current transaction for commit.
+
+        May raise a ConflictError.
+        """
+
     def commit():
-        """Commit the current transaction, start a new one.
+        """Commit the prepared transaction, start a new one.
         """
 
     def abort():

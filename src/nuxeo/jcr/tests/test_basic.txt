@@ -34,6 +34,7 @@ Let's see what types and schemas are available, and check their classes::
      'ecmst:dublincore',
      'ecmst:name', 'ecmst:names',
      'ecmst:place', 'ecmst:places',
+     'ecmst:security',
      'ecmst:tripreport',
      'rep:root',
      'tripreport']
@@ -321,3 +322,82 @@ You can't remove a nonexisting child from a container::
     KeyError: 'bobo'
     >>> tm.abort()
 
+Local roles mapping
+-------------------
+
+Zope 2 local roles attributes are mapped to a `ecm:localroles` property::
+
+    >>> trip.getProperty('ecm:localroles', 'none')
+    'none'
+
+    >>> trip._p_changed
+    False
+    >>> trip.__ac_local_roles__ = {'bob': ['Foo', 'Bar'], 'pete': ['Lol']}
+    >>> trip._p_changed
+    True
+    >>> trip.__ac_local_roles__ == {'bob': ['Foo', 'Bar'], 'pete': ['Lol']}
+    True
+    >>> trip.getProperty('ecm:localroles')
+    'user:bob=Bar,Foo;user:pete=Lol'
+    >>> trip.__ac_local_group_roles__ = {'cool': ['Mdr']}
+    >>> trip.getProperty('ecm:localroles')
+    'group:cool=Mdr;user:bob=Bar,Foo;user:pete=Lol'
+    >>> trip.__ac_local_roles__ = None
+    >>> trip.getProperty('ecm:localroles')
+    'group:cool=Mdr'
+    >>> trip.__ac_local_group_roles__ = None
+    >>> trip.getProperty('ecm:localroles', 'none')
+    'none'
+
+    >>> trip.setProperty('ecm:localroles', 'user:bob=Foo')
+    >>> trip.getProperty('ecm:localroles')
+    'user:bob=Foo'
+    >>> trip.__ac_local_roles__ = {'bob': ['Foo']}
+    >>> tm.commit()
+
+Now reload from storage::
+
+    >>> trip._p_deactivate()
+    >>> trip.__ac_local_roles__
+    {'bob': ['Foo']}
+    >>> trip.getProperty('ecm:localroles')
+    'user:bob=Foo'
+    >>> del trip.__ac_local_roles__
+    >>> trip.getProperty('ecm:localroles', 'none')
+    'none'
+    >>> tm.commit()
+
+Security mapping
+----------------
+
+Zope security is mapped to a `ecm:security` attribute::
+
+    >>> getattr(trip, '_View_Permission', 'none')
+    'none'
+
+    >>> trip._p_changed
+    False
+    >>> trip._View_Permission = ('Foo', 'Bar')
+    >>> trip._Modify_Permission = ['Baz']
+    >>> trip._p_changed
+    True
+    >>> trip.getProperty('ecm:security')
+    'Modify+=Baz;View=Bar,Foo'
+    >>> trip.setProperty('ecm:security', 'View+=Bar')
+    >>> trip._View_Permission
+    ['Bar']
+    >>> getattr(trip, '_Modify_Permission', 'none')
+    'none'
+    >>> tm.commit()
+
+Now reload from storage::
+
+    >>> trip._p_deactivate()
+    >>> trip._View_Permission
+    ['Bar']
+    >>> trip.getProperty('ecm:security')
+    'View+=Bar'
+    >>> del trip._View_Permission
+    >>> trip.getProperty('ecm:security', 'none')
+    'none'
+    >>> tm.commit()

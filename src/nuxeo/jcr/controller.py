@@ -285,6 +285,48 @@ class JCRController(object):
         """See IJCRController.
         """
         raise NotImplementedError
+        self._writeline('M')
+        for command in commands:
+            op = command[0]
+            if op == 'add':
+                puuid, name, node_type, props, token = command[1:]
+                line = '+%s %s %s %s' % (puuid, node_type, token, name)
+                self._writeline(line)
+                for key, value in props.iteritems():
+                    self.sendProp(key, value)
+                # expect token from map at the end
+
+                map[token] = uuid
+            elif op == 'modify':
+                uuid, props = command[1:]
+                if uuid in map:
+                    uuid = map[uuid]
+                self.storage.modifyProperties(uuid, props)
+            elif op == 'remove':
+                uuid = command[1]
+                if uuid in map:
+                    uuid = map[uuid]
+                self.storage.removeNode(uuid)
+            elif op == 'reorder':
+                uuid, inserts = command[1:]
+                if uuid in map:
+                    uuid = map[uuid]
+                self.storage.reorderChildren(uuid, inserts)
+            else:
+                raise ProtocolError("invalid op %r" % (op,))
+
+            #elif command == 'XXX':
+            #    XXX
+
+        # Read answer (err/tokens)
+        line = self._readline()
+        if line.startswith('!'):
+            raise ProtocolError(line)
+        # Read tokens
+        map = {}
+        raise NotImplementedError
+        return map
+
 
     def getNodeProperties(self, uuid, names):
         """See IJCRController.
@@ -295,6 +337,11 @@ class JCRController(object):
         """See IJCRController.
         """
         raise NotImplementedError('Unused')
+
+    def prepare(self):
+        """See IJCRController.
+        """
+        raise NotImplementedError
 
     def commit(self):
         """See IJCRController.
@@ -452,6 +499,11 @@ class JCRIceController(object):
         """See IJCRController.
         """
         raise NotImplementedError('Unused')
+
+    def prepare(self):
+        """See IJCRController.
+        """
+        raise NotImplementedError
 
     def commit(self):
         """See IJCRController.

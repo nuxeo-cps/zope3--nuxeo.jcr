@@ -293,7 +293,11 @@ class Connection(object):
             else:
                 # No previous value, create one
                 assert not IProperty.providedBy(value), value
-                field = obj.getSchema()[name]
+                try:
+                    field = obj.getSchema()[name]
+                except KeyError:
+                    raise KeyError("Schema %r has no property %r" %
+                                   (obj.getSchema().getName(), name))
                 if ICapsuleField.providedBy(field):
                     prop = self._addNode(obj, name, field.schema)
                     prop.setPythonValue(value)
@@ -489,7 +493,7 @@ class Connection(object):
         the bulk of the objects are committed.
         """
         self.savepoint()
-        self.controller.commit()
+        self.controller.prepare()
 
     def tpc_vote(self, txn):
         """Verify that the transaction can be committed.
@@ -497,7 +501,7 @@ class Connection(object):
         This is the second half of the 'prepare' phase of the two-phase
         commit.
         """
-        return
+        self.controller.commit()
 
     def tpc_finish(self, txn):
         """Finalize the transaction commit.
@@ -659,11 +663,11 @@ class Connection(object):
             # setstate() call.
             state = self._pending_states.pop(oid)
         elif issubclass(klass, Document): # or use interfaces?
-            state = self._loadObjectState(oid, full_document=True)
+            state = self._loadObjectState(obj, oid, full_document=True)
         elif issubclass(klass, ContainerBase):
             state = self._loadContainerState(oid)
         elif issubclass(klass, ObjectProperty):
-            state = self._loadObjectState(oid)
+            state = self._loadObjectState(obj, oid)
         else:
             raise ValueError("Unknown class %s.%s" %
                              (klass.__module__, klass.__name__))
@@ -672,7 +676,7 @@ class Connection(object):
         obj.__setstate__(state)
 
 
-    def _loadObjectState(self, uuid, full_document=False):
+    def _loadObjectState(self, obj, uuid, full_document=False):
         """Load the state of a Node from the JCR.
 
         This Node represents either an IObjectBase or a full document
@@ -691,6 +695,8 @@ class Connection(object):
         else:
             parent = None
 
+        state = {}
+
         # JCR properties
         prop_map = {}
         type_name = 'ecm:UnknownType' # XXX
@@ -700,6 +706,12 @@ class Connection(object):
                 # don't put jcr:primaryType in properties
             else:
                 prop_map[prop_name] = prop_value
+                if full_document:
+                    # Magic properties to map security
+                    func = obj.__setattr_special_properties__.get(prop_name)
+                    if func is not None:
+                        func(obj, prop_value, state)
+
         schema = self._db.getSchema(type_name)
 
         # JCR children
@@ -714,12 +726,12 @@ class Connection(object):
                 prop_map[child_name] = child
 
         # State
-        state = {
+        state.update({
             '__name__': name,
             '__parent__': parent,
             '_schema': schema,
             '_props': prop_map,
-            }
+            })
         if full_document:
             if children is None:
                 this = self._getFromCache(uuid)
