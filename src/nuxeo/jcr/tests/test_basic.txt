@@ -280,11 +280,11 @@ another::
     <ListProperty at /atrip/places>
     >>> places[0]
     <ObjectProperty at /atrip/places/...>
-    >>> v = places.getPythonValue()
+    >>> v = places.getDTO()
     >>> list(sorted(v[0].keys()))
     ['__name__', 'p']
 
-    >>> places.setPythonValue([v[2], v[1], v[0]])
+    >>> places.setDTO([v[2], v[1], v[0]])
     >>> [p.getProperty('p') for p in places]
     [u'C', u'B', u'A']
     >>> tm.commit()

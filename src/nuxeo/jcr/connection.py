@@ -284,7 +284,7 @@ class Connection(object):
                             raise ValueError("Cannot replace property %r "
                                              "with %r" % (old, value))
                     else:
-                        old.setPythonValue(value)
+                        old.setDTO(value)
                 else:
                     # Updating a non-IProperty
                     assert not IProperty.providedBy(value), value
@@ -300,7 +300,7 @@ class Connection(object):
                                    (obj.getSchema().getName(), name))
                 if ICapsuleField.providedBy(field):
                     prop = self._addNode(obj, name, field.schema)
-                    prop.setPythonValue(value)
+                    prop.setDTO(value)
                     obj._props[name] = prop
                 else:
                     # Setting a new non-IProperty
