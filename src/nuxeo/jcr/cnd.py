@@ -34,14 +34,16 @@ import zope.schema
 from zope.app.container.constraints import ItemTypePrecondition
 from zope.app.container.interfaces import IContainer
 from zope.interface.interface import InterfaceClass
-from nuxeo.capsule.field import BinaryField
 from nuxeo.capsule.field import ListPropertyField
 from nuxeo.capsule.field import ObjectPropertyField
+from nuxeo.capsule.field import BlobField
+from nuxeo.capsule.field import ReferenceField
 
 from nuxeo.capsule.interfaces import IDocument
 from nuxeo.capsule.interfaces import IWorkspace
 from nuxeo.capsule.interfaces import IObjectBase
 from nuxeo.capsule.interfaces import IChildren
+from nuxeo.capsule.interfaces import IResourceProperty
 
 
 
@@ -521,6 +523,7 @@ class InterfaceMaker(object):
         'ecmnt:document': IDocument,
         'ecmnt:schema': IObjectBase,
         'ecmnt:children': IChildren,
+        'nt:resource': IResourceProperty,
         }
 
     def __init__(self, input=None):
@@ -572,51 +575,35 @@ class InterfaceMaker(object):
 
     def makeString(self, info):
         """Makes a field from a JCR strings property."""
-        constraint = None
-        f = zope.schema.Text(__name__=info['name'],
-                             constraint=constraint)
+        f = zope.schema.Text(__name__=info['name'])
         return f
 
     def makeBinary(self, info):
-        constraint = None
-        f = BinaryField(__name__=info['name'],
-                        constraint=constraint)
+        f = BlobField(__name__=info['name'])
         return f
 
     def makeBoolean(self, info):
-        constraint = None
-        f = zope.schema.Bool(__name__=info['name'],
-                             constraint=constraint)
+        f = zope.schema.Bool(__name__=info['name'])
         return f
 
     def makeDate(self, info):
-        constraint = None
-        f = zope.schema.Datetime(__name__=info['name'],
-                                 constraint=constraint)
+        f = zope.schema.Datetime(__name__=info['name'])
         return f
 
     def makeLong(self, info):
-        constraint = None
-        f = zope.schema.Int(__name__=info['name'],
-                            constraint=constraint)
+        f = zope.schema.Int(__name__=info['name'])
         return f
 
     def makeDouble(self, info):
-        constraint = None
-        f = zope.schema.Float(__name__=info['name'],
-                              constraint=constraint)
+        f = zope.schema.Float(__name__=info['name'])
         return f
 
     def makeName(self, info): # XXX
-        constraint = None
-        f = zope.schema.Text(__name__=info['name'],
-                             constraint=constraint)
+        f = zope.schema.Text(__name__=info['name'])
         return f
 
     def makeReference(self, info): # XXX
-        constraint = None
-        f = zope.schema.Text(__name__=info['name'],
-                             constraint=constraint)
+        f = ReferenceField(__name__=info['name'])
         return f
 
     def makeUndefined(self, info): # XXX
@@ -639,74 +626,56 @@ class InterfaceMaker(object):
 
     def makeStringList(self, info):
         """Makes a field from a JCR string multiple property."""
-        constraint = None
         f = zope.schema.List(__name__=info['name'],
-                             constraint=constraint,
                              value_type=zope.schema.Text(),
                              )
         return f
 
     def makeLongList(self, info):
-        constraint = None
         f = zope.schema.List(__name__=info['name'],
-                             constraint=constraint,
                              value_type=zope.schema.Int(),
                              )
         return f
 
 
     def makeDateList(self, info):
-        constraint = None
         f = zope.schema.List(__name__=info['name'],
-                             constraint=constraint,
                              value_type=zope.schema.Datetime(),
                              )
         return f
 
     def makeDoubleList(self, info):
-        constraint = None
         f = zope.schema.List(__name__=info['name'],
-                             constraint=constraint,
                              value_type=zope.schema.Float(),
                              )
         return f
 
     def makeBinaryList(self, info):
-        constraint = None
         f = zope.schema.List(__name__=info['name'],
-                             constraint=constraint,
-                             value_type=BinaryField(),
+                             value_type=BlobField(),
                              )
         return f
 
     def makeBooleanList(self, info):
-        constraint = None
         f = zope.schema.List(__name__=info['name'],
-                             constraint=constraint,
                              value_type=zope.schema.Bool(),
                              )
         return f
 
     def makeNameList(self, info): # XXX
-        constraint = None
         f = zope.schema.List(__name__=info['name'],
-                             constraint=constraint,
                              value_type=zope.schema.Text(),
                              )
         return f
 
     def makeReferenceList(self, info): # XXX
-        constraint = None
         f = zope.schema.List(__name__=info['name'],
-                             constraint=constraint,
                              value_type=zope.schema.Text(),
                              )
         return f
 
     def makeUndefinedList(self, info): # XXX
-        constraint = None
-        f = zope.schema.List(__name__=info['name'],
-                             constraint=constraint)
+        f = zope.schema.List(__name__=info['name'])
         return f
 
 
