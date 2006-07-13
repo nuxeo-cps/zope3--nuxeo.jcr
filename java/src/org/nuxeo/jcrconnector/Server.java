@@ -10,7 +10,7 @@ public class Server extends Application {
         if (args.length < 2) {
             System.err.println("Usage: Server <repopath> <cndpath> --Ice.Config=/path/to/config");
             communicator().shutdown();
-            System.exit(1);
+            return 1;
         }
 
         Ice.ObjectAdapter adapter = communicator().createObjectAdapter("JCR");
@@ -25,7 +25,7 @@ public class Server extends Application {
         } catch (Exception e) {
             e.printStackTrace();
             communicator().shutdown();
-            System.exit(1);
+            return 1;
         }
 
         adapter.add(new JCRControllerImp(repository, cndFileName), Ice.Util.stringToIdentity("jcrcontroller"));
