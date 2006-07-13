@@ -30,6 +30,7 @@ public class Server extends Application {
 
         adapter.add(new JCRControllerImp(repository, cndFileName), Ice.Util.stringToIdentity("jcrcontroller"));
         adapter.activate();
+        System.err.println("Started.");
         communicator().waitForShutdown();
         return 0;
     }
@@ -40,6 +41,7 @@ public class Server extends Application {
     public static void main(String[] args) {
         Server app = new Server();
         int status = app.main("Server", args);
+        System.err.println("Stopped.");
         System.exit(status);
     }
 

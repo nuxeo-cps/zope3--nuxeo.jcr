@@ -6,8 +6,10 @@ import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import javax.jcr.ItemNotFoundException;
+import javax.jcr.NamespaceException;
 import javax.jcr.NamespaceRegistry;
 import javax.jcr.Node;
 import javax.jcr.NodeIterator;
@@ -21,6 +23,7 @@ import javax.jcr.SimpleCredentials;
 import javax.jcr.UnsupportedRepositoryOperationException;
 import javax.jcr.Value;
 import javax.jcr.Workspace;
+import javax.jcr.nodetype.NoSuchNodeTypeException;
 
 import org.apache.jackrabbit.core.SessionImpl;
 import org.apache.jackrabbit.core.nodetype.NodeTypeDef;
@@ -30,6 +33,7 @@ import org.apache.jackrabbit.core.nodetype.compact.CompactNodeTypeDefReader;
 import org.apache.jackrabbit.core.nodetype.compact.CompactNodeTypeDefWriter;
 import org.apache.jackrabbit.name.NamespaceResolver;
 import org.apache.jackrabbit.name.QName;
+import org.apache.jackrabbit.util.name.NamespaceMapping;
 
 import Ice.Current;
 import jcr.JCRRepositoryException;
@@ -212,29 +216,34 @@ public class JCRControllerImp extends _JCRControllerDisp {
         }
     }
 
-    private void checkNodeTypeDefs() throws Exception {
+	@SuppressWarnings("unchecked")
+	private void checkNodeTypeDefs() throws Exception {
         Workspace ws = session.getWorkspace();
         NodeTypeManagerImpl ntm = (NodeTypeManagerImpl)ws.getNodeTypeManager();
         try {
-            ntm.getNodeType("cpsnt:document");
+            ntm.getNodeType("ecmnt:document");
             return;
-        } catch (Exception e) {
-            e.printStackTrace();
+        } catch (NoSuchNodeTypeException e) {
+        	// fall through
         }
-        try {
-            NamespaceRegistry nsr = ws.getNamespaceRegistry();
-            nsr.registerNamespace("cpsnt", "http://nuxeo.org/jcr/1.0/cpsnt/");
-            nsr.registerNamespace("cpss", "http://nuxeo.org/jcr/1.0/cpss/");
-            nsr.registerNamespace("cpst", "http://nuxeo.org/jcr/1.0/cpst/");
-            nsr.registerNamespace("cpsd", "http://nuxeo.org/jcr/1.0/cpsd/");
-            nsr.registerNamespace("cps", "http://nuxeo.org/jcr/1.0/cps/");
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        // read cnd
         FileReader fileReader = new FileReader(cndFileName);
         CompactNodeTypeDefReader cndReader = new CompactNodeTypeDefReader(fileReader, cndFileName);
+        // register namespaces
+        NamespaceRegistry nsr = ws.getNamespaceRegistry();
+        NamespaceMapping nsm = cndReader.getNamespaceMapping();
+        Map<String, String> map = (Map<String, String>)nsm.getPrefixToURIMapping();
+        for (Map.Entry<String, String> entry : map.entrySet()) {
+            String prefix = entry.getKey();
+            String uri = entry.getValue();
+            try {
+                nsr.registerNamespace(prefix, uri);
+            } catch (NamespaceException e) {
+            	// ignore -- already defined or something like that
+            }
+        }
+        // register node types
         NodeTypeRegistry ntr = ntm.getNodeTypeRegistry();
-        List ntdList = cndReader.getNodeTypeDefs();
-        ntr.registerNodeTypes(ntdList);
+        ntr.registerNodeTypes(cndReader.getNodeTypeDefs());
     }
 }

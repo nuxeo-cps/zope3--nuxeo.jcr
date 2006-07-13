@@ -1,41 +1,112 @@
-<cpsnt='http://nuxeo.org/jcr/1.0/cpsnt/'>
-<cpss='http://nuxeo.org/jcr/1.0/cpss/'>
-<cpst='http://nuxeo.org/jcr/1.0/cpst/'>
-<cpsd='http://nuxeo.org/jcr/1.0/cpsd/'>
-<cps='http://nuxeo.org/jcr/1.0/cps/'>
+<''=''>
+<ecm='http://nuxeo.org/ecm/jcr/names'>
+<ecmnt='http://nuxeo.org/ecm/jcr/types'>
+<ecmdt='http://nuxeo.org/ecm/jcr/docs'>
+<ecmst='http://nuxeo.org/ecm/jcr/schemas'>
+<dc='http://purl.org/dc/elements/1.1/'>
+<dcterms='http://purl.org/dc/terms/'>
 
-// complex type base
-[cpsnt:type]
+////////
+// bases
+////////
+
+// base of all our non-mixin JCR types
+[ecmnt:base]
 
 // schema base
-[cpsnt:schema]
+[ecmnt:schema] > ecmnt:base
 
-// document
-[cpsnt:document]
+// document base
+[ecmnt:document] > ecmnt:base
+  - ecm:security
+  - ecm:localroles
 
-// non-orderable  folder
-[cpsnt:folder] > cpsnt:document
-  + * (cpsnt:document)
+///////////////////
+// standard schemas
+///////////////////
 
 // dublin core
-[cpss:dublincore] > cpsnt:schema
-  - cps:title
-  - cps:description (String)
+[ecmst:dublincore] > ecmnt:schema
+  - dc:title
+  - dc:creator
+  - dc:subjects *
+  - dc:description
+  - dc:publisher
+  - dc:contributors *
+  - dc:date (Date)
+  - dc:type
+  - dc:format
+  - dc:identifier
+  - dc:source
+  - dc:language
+  - dc:relation
+  - dc:coverage
+  - dc:rights
+  - dcterms:created (Date)
+  - dcterms:modified (Date)
+  // publication date aka effective date
+  - dcterms:issued (Date)
+  - dcterms:valid (Date)
+  - dcterms:expired (Date)
 
-////////// example
+
+// workflow status
+
+// AT: this is the base workflow status defined for workspace, it will have to
+// be redefined for other documents: they need a ecm:workflowStatus property,
+// see CPSWorkflow/capsule/status.cnd for sample schemas.
+
+[ecmst:workflowStatus] > ecmnt:schema
+  - state
+  - action
+  - actor
+  - comments
+  - time (Date)
+  - rpath
+
+/////////////
+// base types
+/////////////
+
+// folderish document base
+[ecmnt:folder] > ecmnt:document
+  + * (ecmnt:document)
+
+// ordered folderish base
+[ecmnt:orderedfolder] > ecmnt:document
+  orderable
+
+// root workspace
+[ecmnt:workspace] > ecmnt:folder, ecmst:dublincore
+  + ecm:workflowStatus (ecmst:workflowStatus)
+
+// root version workspace
+[ecmnt:versionworkspace] > ecmnt:workspace
+
+// proxy
+[ecmnt:proxy] > ecmnt:document
+  - ecm:reference (Reference)
+
+/////////
+
 
 // a complex type for firstname+lastname
-[cpst:name] > cpsnt:type
-  - cps:firstname (String)
-  - cps:lastname (String)
+[ecmst:name] > ecmnt:schema
+  - firstname (String)
+  - lastname (String)
+
+// list of names
+[ecmst:names] > ecmnt:schema
+  + * (ecmst:name)
 
 // the schema for the tripreport part
-[cpss:tripreport] > cpsnt:schema
-  - cps:duedate (Date)
-  - cps:cities (String) multiple
-  + cps:username (cpst:name)
-  + cps:childrennames (cpst:name) multiple
+[ecmst:tripreport] > ecmnt:schema
+  - duedate (Date)
+  - cities (String) multiple
+  + username (ecmst:name) = ecmst:name
+  + childrennames (ecmst:names) = ecmst:names
 
 // a full document type
-[cpsd:tripreport] > cpsnt:document, cpss:tripreport, cpss:dublincore
+[ecmdt:tripreport] > ecmnt:document, ecmst:tripreport, ecmst:dublincore
+
 
