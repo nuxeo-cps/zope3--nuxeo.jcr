@@ -339,6 +339,7 @@ class Workspace(Document, CapsuleWorkspace):
     """JCR Workspace
     """
 
+
 class ListProperty(ContainerBase, ObjectBase, CapsuleListProperty):
     """JCR-specific list property.
     """

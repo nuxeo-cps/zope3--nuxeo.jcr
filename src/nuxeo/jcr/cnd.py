@@ -39,12 +39,7 @@ from nuxeo.capsule.field import ObjectPropertyField
 from nuxeo.capsule.field import BlobField
 from nuxeo.capsule.field import ReferenceField
 
-from nuxeo.capsule.interfaces import IDocument
-from nuxeo.capsule.interfaces import IWorkspace
 from nuxeo.capsule.interfaces import IObjectBase
-from nuxeo.capsule.interfaces import IChildren
-from nuxeo.capsule.interfaces import IResourceProperty
-
 
 
 _MARKER = object()
@@ -518,18 +513,13 @@ class InterfaceMaker(object):
     """An incremental interface maker that can be fed new data later.
     """
 
-    _predefined = {
-        'rep:root': IWorkspace,
-        'ecmnt:document': IDocument,
-        'ecmnt:schema': IObjectBase,
-        'ecmnt:children': IChildren,
-        'nt:resource': IResourceProperty,
-        }
-
-    def __init__(self, input=None):
+    def __init__(self, input=None, predefined=None):
         self._namespaces = {}
         self._infos = {}
         self._interfaces = {}
+        if predefined is None:
+            predefined = {}
+        self._predefined = predefined
         if input is not None:
             self.addData(input)
 
@@ -722,11 +712,14 @@ class InterfaceMaker(object):
             if iface is not None:
                 self._interfaces[type_name] = iface
                 self._interfaces[iface.getName()] = iface # Real name
-                new_fields[type_name] = None
+                new_fields[type_name] = iface._InterfaceClass__attrs
                 continue
 
             info = self._infos[type_name]
-            attrs = {} # will be mutated later
+            # Will be mutated later.
+            # It's ok to do so in the current implementation of interfaces
+            # if we only add new fields, and don't change existing ones.
+            attrs = {}
 
             # Are we a container?
             is_container = bool([1 for node in info['nodes']
@@ -773,13 +766,6 @@ class InterfaceMaker(object):
             info = self._infos[type_name]
             iface = self._interfaces[type_name]
             fields = new_fields[type_name]
-
-            if fields is None:
-                if info['properties'] or info['nodes']:
-                    raise ValueError("Predefined interface %s [%s] cannot "
-                                     "have properties or nodes" %
-                                     (iface.getName(), type_name))
-                continue
 
             for nodeinfo in info['nodes']:
                 nodename = nodeinfo['name']

@@ -16,10 +16,13 @@
 """JCR schema management.
 """
 
-from nuxeo.capsule.interfaces import IObjectBase
-from nuxeo.capsule.interfaces import IChildren
 from nuxeo.capsule.schema import SchemaManager as BaseSchemaManager
 from nuxeo.jcr.cnd import InterfaceMaker
+from nuxeo.capsule.interfaces import IDocument
+from nuxeo.capsule.interfaces import IWorkspace
+from nuxeo.capsule.interfaces import IChildren
+from nuxeo.capsule.interfaces import IResourceProperty
+from nuxeo.capsule.interfaces import IObjectBase
 
 
 class SchemaManager(BaseSchemaManager):
@@ -28,9 +31,18 @@ class SchemaManager(BaseSchemaManager):
     It builds the schemas and interfaces from a CND definition.
     """
 
-    def __init__(self):
+    def __init__(self, predefined=None):
         super(SchemaManager, self).__init__()
-        self._interfaces = InterfaceMaker()
+        default = {
+            'rep:root': IWorkspace,
+            'ecmnt:document': IDocument,
+            'ecmnt:schema': IObjectBase,
+            'ecmnt:children': IChildren,
+            'nt:resource': IResourceProperty,
+            }
+        if predefined is not None:
+            default.update(predefined)
+        self._interfaces = InterfaceMaker(predefined=default)
 
     def addCND(self, cnd):
         """Build zope 3 schemas from CND definitions.
