@@ -216,15 +216,15 @@ public class JCRControllerImp extends _JCRControllerDisp {
         }
     }
 
-	@SuppressWarnings("unchecked")
-	private void checkNodeTypeDefs() throws Exception {
+    @SuppressWarnings("unchecked")
+    private void checkNodeTypeDefs() throws Exception {
         Workspace ws = session.getWorkspace();
         NodeTypeManagerImpl ntm = (NodeTypeManagerImpl)ws.getNodeTypeManager();
         try {
             ntm.getNodeType("ecmnt:document");
             return;
         } catch (NoSuchNodeTypeException e) {
-        	// fall through
+            // fall through
         }
         // read cnd
         FileReader fileReader = new FileReader(cndFileName);
@@ -239,7 +239,7 @@ public class JCRControllerImp extends _JCRControllerDisp {
             try {
                 nsr.registerNamespace(prefix, uri);
             } catch (NamespaceException e) {
-            	// ignore -- already defined or something like that
+                // ignore -- already defined or something like that
             }
         }
         // register node types
