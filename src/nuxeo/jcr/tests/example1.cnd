@@ -48,7 +48,7 @@
   orderable
   + character (characterType) = characterType multiple
 
-[ex:NodeType] > ex:ParentNodeType1, ex:ParentNodeType2
+[ex:NodeType] > 'ex:ParentNodeType1', ex:ParentNodeType2
   orderable mixin
   - ex:property (long)
     = '1', '2' primary mandatory autocreated protected multiple version

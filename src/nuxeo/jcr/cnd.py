@@ -266,7 +266,7 @@ class Parser(object):
         supertypes = []
         while True:
             token = next()
-            if not isinstance(token, LexerQName):
+            if not isinstance(token, (LexerQName, LexerString)):
                 raise ValueError(token)
             supertypes.append(token.value)
             token = next()
