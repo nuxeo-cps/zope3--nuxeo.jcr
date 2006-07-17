@@ -305,7 +305,7 @@ class Parser(object):
                 return strings
 
     def getQNameList(self):
-        return self.getStringList(LexerQName)
+        return self.getStringList((LexerQName, LexerString))
 
 
     ok_type_names = ('string', 'binary', 'long', 'double', 'boolean',
@@ -362,7 +362,7 @@ class Parser(object):
         token = next()
         if token == '*':
             node_name = '*'
-        elif isinstance(token, LexerQName):
+        elif isinstance(token, (LexerQName, LexerString)):
             node_name = token.value
         else:
             raise ValueError(token)
@@ -382,7 +382,7 @@ class Parser(object):
         token = next()
         if token == '=':
             token = next()
-            if not isinstance(token, LexerQName):
+            if not isinstance(token, (LexerQName, LexerString)):
                 raise ValueError(token)
             default_type = token.value
         else:
@@ -404,7 +404,7 @@ class Parser(object):
         token = next()
         if token == '*':
             name = '*'
-        elif isinstance(token, LexerQName):
+        elif isinstance(token, (LexerQName, LexerString)):
             name = token.value
         else:
             raise ValueError(token)
@@ -473,7 +473,7 @@ class Parser(object):
 
             # Type definition
             token = next()
-            if not isinstance(token, LexerQName):
+            if not isinstance(token, (LexerQName, LexerString)):
                 raise ValueError(token)
             node_type = token.value
             token = next()
