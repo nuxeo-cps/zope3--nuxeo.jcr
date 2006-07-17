@@ -681,7 +681,7 @@ class InterfaceMaker(object):
         'undefined': makeUndefinedList,
         }
 
-    def _makeInterfaces(self, type_names):
+    def _makeInterfaces(self, type_names, tops):
         """Build empty interfaces.
 
         They will be mutated later to add fields. This allows fields to
@@ -696,6 +696,9 @@ class InterfaceMaker(object):
         # so that dependents are done first
         graph = dict((type_name, info['supertypes'])
                      for type_name, info in self._infos.iteritems())
+        for top in tops:
+            graph[top] = []
+
         try:
             sorted_type_names = topologicalSort(graph)
         except ValueError, e:
@@ -727,7 +730,8 @@ class InterfaceMaker(object):
 
             # Find which bases to use.
             bases = tuple([self._interfaces[sup]
-                           for sup in info['supertypes']])
+                           for sup in info['supertypes']
+                           if sup != 'nt:base' and not sup.startswith('mix:')])
             # Containers use IContainer, the rest Interface
             # XXX differentiate between container (dict) and list
             if is_container:
@@ -753,10 +757,16 @@ class InterfaceMaker(object):
         'nt:versionLabels', # * properties
         )
 
+    _tops = (
+        'nt:base',
+        'mix:versionable',
+        'mix:referenceable',
+        )
+
     def _buildSchemas(self, type_names):
         """Build the full schemas for the given type names.
         """
-        new_fields = self._makeInterfaces(type_names)
+        new_fields = self._makeInterfaces(type_names, self._tops)
 
         # Preconditions for container types checked first
 

@@ -3,6 +3,8 @@
 // $Id: cps.cnd 46617 2006-06-19 16:31:27Z fguillaume $
 
 <''=''>
+<nt='http://www.jcp.org/jcr/nt/1.0'>
+<mix='http://www.jcp.org/jcr/mix/1.0'>
 <ecm='http://nuxeo.org/ecm/jcr/names'>
 <ecmnt='http://nuxeo.org/ecm/jcr/types'>
 <ecmdt='http://nuxeo.org/ecm/jcr/docs'>
@@ -19,13 +21,13 @@
 //// bases
 
 // base of all our non-mixin JCR types
-[ecmnt:base]
+[ecmnt:base] > nt:base
 
 // schema base
 [ecmnt:schema] > ecmnt:base
 
 // document base
-[ecmnt:document] > ecmnt:base
+[ecmnt:document] > ecmnt:schema, mix:versionable
 
 // children nodes
 [ecmnt:children] > ecmnt:base
