@@ -3,11 +3,11 @@
 
 <ex = "http://example.org/jackrabbit/example">
 
-[bookType]
-  - id
+['bookType']
+  - 'the_id'
   - available (Boolean)
   - isbn mandatory
-  + title (titleType) = titleType mandatory
+  + 'title' ('titleType') = 'titleType' mandatory
   + authors (authorsType) = authorsType mandatory
   + characters (charactersType) = charactersType mandatory
 
