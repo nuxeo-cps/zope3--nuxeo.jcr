@@ -14,6 +14,9 @@
 # Author: Florent Guillaume <fg@nuxeo.com>
 # $Id$
 """Fake JCR server.
+
+Does a full copy of the state to simulate transactions.
+Does a 3-way merge when something is committed.
 """
 
 from copy import deepcopy
