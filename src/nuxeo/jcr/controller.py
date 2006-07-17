@@ -21,11 +21,25 @@ import socket
 import sys
 import traceback
 import os.path
+import logging
 import zope.interface
 from datetime import datetime
 
+from nuxeo.capsule.base import Blob
+from nuxeo.capsule.base import Reference
 from nuxeo.jcr.interfaces import IJCRController
 from nuxeo.jcr.interfaces import ProtocolError
+from nuxeo.jcr.interfaces import ConflictError
+
+
+logger = logging.getLogger('nuxeo.jcr.controller')
+
+
+def unicodeName(name):
+    try:
+        return unicode(name, 'utf-8')
+    except UnicodeError:
+        raise UnicodeError("Unicode error decoding %r" % name)
 
 
 class JCRController(object):
@@ -74,6 +88,10 @@ class JCRController(object):
         self._sock.sendall(data)
 
     def _writeline(self, data):
+        try:
+            data = data.encode('utf-8')
+        except UnicodeError:
+            raise UnicodeError("Failed to encode %r into utf-8" % data)
         self._write(data+'\n')
 
     # _read, _readline and _extract_line attempt to minimize copies
@@ -195,40 +213,45 @@ class JCRController(object):
                     parent_uuid = line[1:]
                 elif tag == 'N':
                     uuid, nodetype, name = line[1:].split(' ', 2)
-                    children.append((name, uuid, nodetype))
+                    children.append((unicodeName(name), uuid, nodetype))
                 elif tag == 'P':
                     name = line[1:]
-                    properties.append((name, self._getOneValue()))
+                    properties.append((unicodeName(name), self._getOneValue()))
                 elif tag == 'M':
-                    number, name = line[1:].split(' ', 1)
+                    name = line[1:]
                     values = []
-                    for i in xrange(int(number)):
-                        values.append(self._getOneValue())
-                    properties.append((name, values))
+                    while True:
+                        v = self._getOneValue()
+                        if v is None:
+                            break
+                        values.append(v)
+                    properties.append((unicodeName(name), values))
                 elif tag == 'D':
                     name = line[1:]
-                    deferred.append(name)
+                    deferred.append(unicodeName(name))
                 else:
                     raise ProtocolError(line)
-            infos[node_uuid] = (node_name, parent_uuid,
+            infos[node_uuid] = (unicodeName(node_name), parent_uuid,
                                 children, properties, deferred)
             if tag == '.':
                 break
         return infos
 
-    def _readString(self, line, decode=True):
+    def _readString(self, line):
         length = int(line)
         data = self._read(length)
         last = self._read(1)
         if last != '\n':
             raise ProtocolError("Bad terminator %r" % last)
-        if decode:
-            return data.decode('utf-8')
-        else:
-            return data
+        return unicode(data, 'utf-8')
 
     def _readBinary(self, line):
-        return self._readString(line, decode=False)
+        length = int(line)
+        data = self._read(length)
+        last = self._read(1)
+        if last != '\n':
+            raise ProtocolError("Bad terminator %r" % last)
+        return Blob(data)
 
     def _readLong(self, line):
         return int(line)
@@ -242,9 +265,9 @@ class JCRController(object):
         return datetime(2006, 01, 01) # XXX
 
     def _readBoolean(self, line):
-        if line == '0':
+        if line == 'false':
             return False
-        elif line == '1':
+        elif line == 'true':
             return True
         else:
             raise ProtocolError(line)
@@ -271,11 +294,13 @@ class JCRController(object):
         }
 
     def _getOneValue(self):
-        """Read one value.
+        """Read one value for a property.
         """
         line = self._readline()
         if not line:
             raise ProtocolError(line)
+        if line == 'M':
+            return None
         reader = self._valueReaders.get(line[0])
         if reader is None:
             raise ProtocolError(line)
@@ -284,7 +309,6 @@ class JCRController(object):
     def sendCommands(self, commands):
         """See IJCRController.
         """
-        raise NotImplementedError
         self._writeline('M')
         for command in commands:
             op = command[0]
@@ -293,40 +317,91 @@ class JCRController(object):
                 line = '+%s %s %s %s' % (puuid, node_type, token, name)
                 self._writeline(line)
                 for key, value in props.iteritems():
-                    self.sendProp(key, value)
+                    self._sendProp(key, value)
+                self._writeline(',') # end props
                 # expect token from map at the end
-
-                map[token] = uuid
             elif op == 'modify':
                 uuid, props = command[1:]
-                if uuid in map:
-                    uuid = map[uuid]
-                self.storage.modifyProperties(uuid, props)
+                self._writeline('/'+uuid)
+                for key, value in props.iteritems():
+                    self._sendProp(key, value, allow_none=True)
+                self._writeline(',') # end props
             elif op == 'remove':
                 uuid = command[1]
-                if uuid in map:
-                    uuid = map[uuid]
-                self.storage.removeNode(uuid)
+                self._writeline('-'+uuid)
             elif op == 'reorder':
                 uuid, inserts = command[1:]
-                if uuid in map:
-                    uuid = map[uuid]
-                self.storage.reorderChildren(uuid, inserts)
+                self._writeline('%'+uuid)
+                for name, before in inserts:
+                    try:
+                        self._writeline(name+'/'+before)
+                    except UnicodeError:
+                        raise UnicodeError("Unicode problem with %r + %r" %
+                                           (name, before))
+                self._writeline('%')
             else:
                 raise ProtocolError("invalid op %r" % (op,))
 
-            #elif command == 'XXX':
-            #    XXX
+        # End of commands
+        self._writeline('.')
 
-        # Read answer (err/tokens)
-        line = self._readline()
-        if line.startswith('!'):
-            raise ProtocolError(line)
-        # Read tokens
+        # Read tokens -> uuid mapping
         map = {}
-        raise NotImplementedError
+        while True:
+            line = self._readline()
+            if line == '.':
+                break
+            if line.startswith('!'):
+                raise ProtocolError(line)
+            token, uuid = line.split(' ')
+            map[token] = uuid
         return map
 
+    def _sendProp(self, key, value, allow_none=False):
+        """Send a simple property.
+        """
+        if value is None:
+            if not allow_none:
+                raise ProtocolError("Cannot send a None property %r" % key)
+            self._writeline('D' + key)
+        elif isinstance(value, list):
+            self._writeline('M' + key)
+            for v in value:
+                self._sendOneProp(key, v)
+            self._writeline('M')
+        else:
+            self._writeline('P' + key)
+            self._sendOneProp(key, value)
+
+    def _sendOneProp(self, key, value):
+        # key is passed for error logging purposes
+        if isinstance(value, str):
+            # XXX should be unicode!
+            logger.error("Property %r has non-unicode value %r", key, value)
+            value = unicode(str, 'utf-8')
+
+        if isinstance(value, unicode):
+            v = value.encode('utf-8')
+            self._writeline('s' + str(len(v)))
+            self._write(v) # don't reencode
+            self._write('\n')
+        elif isinstance(value, Blob):
+            self._writeline('x' + str(len(value)))
+            self._write(value.data)
+            self._write('\n')
+        elif isinstance(value, bool):
+            self._writeline('b' + str(value).lower())
+        elif isinstance(value, (int, long)):
+            self._writeline('l' + str(value))
+        elif isinstance(value, float):
+            self._writeline('f' + str(value))
+        elif isinstance(value, datetime):
+            self._writeline('d' + value.isoformat()) # XXX without timezone
+        elif isinstance(value, Reference):
+            self._writeline('r' + value.getTargetUUID())
+        else:
+            raise TypeError("Illegal value %s of type %s for %r" %
+                            (value, type(value), key))
 
     def getNodeProperties(self, uuid, names):
         """See IJCRController.
@@ -341,17 +416,29 @@ class JCRController(object):
     def prepare(self):
         """See IJCRController.
         """
-        raise NotImplementedError
+        self._writeline('p')
+        line = self._readline()
+        if line == '.':
+            return
+        raise ConflictError(line)
 
     def commit(self):
         """See IJCRController.
         """
-        raise NotImplementedError
+        self._writeline('c')
+        line = self._readline()
+        if line == '.':
+            return
+        raise ConflictError(line)
 
     def abort(self):
         """See IJCRController.
         """
-        raise NotImplementedError
+        self._writeline('r') # rollback
+        line = self._readline()
+        if line == '.':
+            return
+        raise ConflictError(line)
 
 
 class JCRIceController(object):

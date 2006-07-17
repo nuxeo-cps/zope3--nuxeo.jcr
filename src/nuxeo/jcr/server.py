@@ -38,7 +38,9 @@ java -Dpython.home=$jython \
 
 """
 
+import os
 import sys
+from types import ListType
 
 import java.io
 import java.util
@@ -49,6 +51,8 @@ import java.nio.channels
 from java.nio.channels import SelectionKey
 
 import javax.jcr
+from javax.jcr import RepositoryException # toplevel exception
+from javax.jcr import ItemNotFoundException
 import javax.jcr.observation.EventListener
 from javax.jcr.observation.Event import NODE_ADDED
 from javax.jcr.observation.Event import NODE_REMOVED
@@ -62,74 +66,20 @@ from javax.transaction.xa import Xid
 
 from org.apache.jackrabbit.core import TransientRepository
 from org.apache.jackrabbit.core.nodetype.compact import \
-     CompactNodeTypeDefWriter
-from org.apache.jackrabbit.core import XASession
+     CompactNodeTypeDefReader
 
 
-try:
-    True
-except NameError:
-    True = 1
-    False = 0
+False, True = 0, 1
 
+MARKER = []
 
-NAMESPACES = [
-    ('ecm', 'http://nuxeo.org/ecm/jcr/names'),
-    ('ecmnt', 'http://nuxeo.org/ecm/jcr/types'),
-    ('ecmst', 'http://nuxeo.org/ecm/jcr/schemas'),
-    ('ecmdt', 'http://nuxeo.org/ecm/jcr/docs'),
-    ('dc', 'http://purl.org/dc/elements/1.1/'),
-    ]
+NODETYPEDEFS = None
 
-NODETYPEDEFS = """
-<ecm='http://nuxeo.org/ecm/jcr/names'>
-<ecmnt='http://nuxeo.org/ecm/jcr/types'>
-<ecmst='http://nuxeo.org/ecm/jcr/schemas'>
-<ecmdt='http://nuxeo.org/ecm/jcr/docs'>
-<dc='http://purl.org/dc/elements/1.1/'>
+CREDENTIALS = javax.jcr.SimpleCredentials('username', 'password')
 
-// schema base
-[ecmnt:schema]
-
-// document
-[ecmnt:document]
-
-// non-orderable  folder
-[ecmnt:folder] > ecmnt:document
-  + * (ecmnt:document)
-
-// dublin core
-[ecmst:dublincore] > ecmnt:schema
-  - dc:title
-  - dc:description (String)
-
-////////// example
-
-// a complex type for firstname+lastname
-[ecmst:name] > ecmnt:schema
-  - firstname (String)
-  - lastname (String)
-
-// the schema for the tripreport part
-[ecmst:tripreport] > ecmnt:schema
-  - duedate (Date)
-  - cities (String) multiple
-  + username (ecmst:name)
-  + childrennames (ecmst:name) multiple
-
-// a full document type
-[ecmdt:tripreport] > ecmnt:document, ecmst:tripreport, ecmst:dublincore
-
-"""
-
-
-
-
-charset = java.nio.charset.Charset.forName('iso-8859-1')
-latinDecoder = charset.newDecoder()
-latinEncoder = charset.newEncoder()
-
-credentials = javax.jcr.SimpleCredentials('username', 'password')
+CHARSET = java.nio.charset.Charset.forName('ISO-8859-1')
+latinDecoder = CHARSET.newDecoder()
+latinEncoder = CHARSET.newEncoder()
 
 
 
@@ -174,7 +124,7 @@ class Listener(javax.jcr.observation.EventListener):
     def onEvent(self, events):
         while events.hasNext():
             event = events.nextEvent()
-            print '%s: event %-16s path %s' % (
+            print "XXX %s: event %-16s path %s" % (
                 self.name,
                 self._eventString(event.getType()),
                 event.getPath())
@@ -201,8 +151,6 @@ class Processor:
         self.io = io
         self.repository = repository
         self.continuations = []
-        self.command = None # current command being parsed by Multiple
-        self.commands = [] # parsed Multiple commands
 
     def write(self, s):
         self.io.write(s)
@@ -213,10 +161,10 @@ class Processor:
 
     def cmdHelp(self, line=None):
         self.writeln("Available commands:")
-        keys = self.commands.keys()
+        keys = self._ops.keys()
         keys.sort()
         for cmd in keys:
-            func, desc = self.commands[cmd]
+            func, desc = self._ops[cmd]
             self.writeln("  %s: %s" % (cmd, desc))
 
 
@@ -228,11 +176,11 @@ class Processor:
         except javax.jcr.NoSuchWorkspaceException:
             return self.writeln("!No such workspace '%s'." % workspaceName)
         self.root = self.session.getRootNode()
-        self.checkRepositoryInit()
+        self.createValue = self.session.getValueFactory().createValue
         self.writeln('^'+self.root.getUUID())
 
     def login(self, workspaceName):
-        session = self.repository.login(credentials, workspaceName)
+        session = self.repository.login(CREDENTIALS, workspaceName)
         xaresource = session.getXAResource()
         xid = DummyXid()
         self.session = session
@@ -317,8 +265,8 @@ class Processor:
         self.io.close()
 
     def logout(self):
-        self._trapXAException(self.rollback)
         if self.session is not None:
+            self._trapXAException(self.rollback)
             self.session.logout()
 
     def cmdStop(self, line=None):
@@ -330,79 +278,20 @@ class Processor:
         dumpNode(self.root, '', self.write)
         self.writeln('.')
 
-    def checkRepositoryInit(self):
-        """Check that things are ok in the repository, after creation.
-
-        """
-        self.checkNodeTypeDefs()
-        root = self.root
-        if not root.isNodeType('mix:referenceable'):
-            root.addMixin('mix:referenceable')
-        if not root.hasNode('toto'):
-            node = root.addNode('toto', 'nt:unstructured')
-            node.addMixin('mix:versionable')
-            root.save()
-            node.checkin()
-            node.checkout()
-            node.setProperty('foo', 'hello bob')
-            root.save()
-            node.checkin()
-        node = root.getNode('toto')
-        if not node.hasProperty('bool'):
-            node.checkout()
-            node.setProperty('bool', 'true', javax.jcr.PropertyType.BOOLEAN)
-            root.save()
-            node.checkin()
-
-    def checkNodeTypeDefs(self):
-        workspace = self.session.getWorkspace()
-        ntm = workspace.getNodeTypeManager()
-        try:
-            ntm.getNodeType('ecmnt:document')
-            return
-        except:
-            # NoSuchNodeTypeException, UnknownPrefixException
-            pass
-        # Create node types from CND data
-        nsr = workspace.getNamespaceRegistry()
-        for prefix, uri in NAMESPACES:
-            try:
-                nsr.registerNamespace(prefix, uri)
-            except javax.jcr.NamespaceException:
-                # already registered
-                pass
-        reader = java.io.ByteArrayInputStream(NODETYPEDEFS)
-        #reader = java.io.StringReader(NODETYPEDEFS)
-        ntm.registerNodeTypes(reader, 'text/x-jcr-cnd')
-
-    def dumpNodeTypes(self):
-        workspace = self.session.getWorkspace()
-        ntr = workspace.getNodeTypeManager().getNodeTypeRegistry()
-        nsr = workspace.getNamespaceRegistry()
-        l = java.util.ArrayList()
-        for name in ntr.getRegisteredNodeTypes():
-            l.add(ntr.getNodeTypeDef(name))
-        sw = java.io.StringWriter()
-        CompactNodeTypeDefWriter.write(l, nsr, sw)
-        return sw.toString()
-
     def cmdGetNodeTypeDefs(self, line):
-        if self.session is None:
-            return self.writeln("!Not logged in.")
-        schema = self.dumpNodeTypes()
-        self.write(schema)
+        self.write(NODETYPEDEFS)
         self.writeln('\n.')
 
     def cmdGetNodeChildren(self, uuid):
         try:
             node = self.session.getNodeByUUID(uuid)
-        except javax.jcr.ItemNotFoundException:
+        except ItemNotFoundException:
             return self.writeln("!No such uuid '%s'" % uuid)
         for subnode in node.getNodes():
             try:
                 subuuid = subnode.getUUID()
             except javax.jcr.UnsupportedRepositoryOperationException:
-                print "Node %s is not referenceable" % subnode.getPath()
+                print "XXX Node %s is not referenceable" % subnode.getPath()
                 continue
             self.writeln('%s %s' % (subnode.getUUID(), subnode.getName()))
         self.writeln('.')
@@ -410,7 +299,7 @@ class Processor:
     def cmdGetNodeType(self, uuid):
         try:
             node = self.session.getNodeByUUID(uuid)
-        except javax.jcr.ItemNotFoundException:
+        except ItemNotFoundException:
             return self.writeln("!No uuid '%s'" % uuid)
         nodeType = node.getProperty('jcr:primaryType').getString()
         self.writeln('T%s' % nodeType)
@@ -421,7 +310,7 @@ class Processor:
         for node_uuid in uuids:
             try:
                 node = self.session.getNodeByUUID(node_uuid)
-            except javax.jcr.ItemNotFoundException:
+            except ItemNotFoundException:
                 return self.writeln("!No uuid '%s'" % node_uuid)
         # Fetch all info
         for node_uuid in uuids:
@@ -431,7 +320,7 @@ class Processor:
             # Parent
             try:
                 parent_uuid = node.getParent().getUUID()
-            except javax.jcr.ItemNotFoundException:
+            except ItemNotFoundException:
                 pass
             else:
                 self.writeln('^%s' % parent_uuid)
@@ -477,7 +366,7 @@ class Processor:
     def dumpDate(self, value):
         self.writeln('d%s' % value.getString()) # 2006-04-07T18:00:42.754+02:00
     def dumpBoolean(self, value):
-        self.writeln('b%d' % int(value.getBoolean()))
+        self.writeln('b%d' % value.getString())
     def dumpName(self, value):
         self.writeln('n%s' % value.getString())
     def dumpPath(self, value):
@@ -500,7 +389,234 @@ class Processor:
     def dumpValue(self, value):
         self.valueDumpers[value.getType()](self, value)
 
-    commands = {
+    def cmdMultiple(self, line=None):
+        self.commands = [] # parsed Multiple commands
+        self.command = None # current command being parsed
+        self.prop_name = None # current prop being parsed
+        self.prop_value = None # its value
+        self.prop_values = None # its values when multiple
+        self.continuations.append(self.expectMultipleOne)
+
+    def expectMultipleOne(self, line):
+        # Store previous command
+        if self.command is not None:
+            self.commands.append(self.command)
+            self.command = None
+        if line == '.':
+            # end multiple commands
+            commands = self.commands
+            self.commands = None
+            return self.processCommands(commands)
+        else:
+            self.continuations.append(self.expectMultipleOne)
+
+        op, rest = line[0], line[1:]
+        if op == '+': # add
+            puuid, node_type, token, name = rest.split(' ', 3)
+            self.command = {
+                'op': 'add',
+                'puuid': puuid,
+                'node_type': node_type,
+                'token': token,
+                'name': unicode(name, 'utf-8'),
+                'props': {},
+                }
+            self.prop_name = None
+            self.continuations.append(self.expectProps)
+        elif op == '/': # modify
+            self.command = {
+                'op': 'modify',
+                'uuid': rest,
+                'props': {},
+                }
+            self.prop_name = None
+            self.continuations.append(self.expectProps)
+        elif op == '-': # remove
+            self.command = {
+                'op': 'remove',
+                'uuid': rest,
+                }
+        elif op == '%': # reorder
+            self.command = {
+                'op': 'reorder',
+                'uuid': rest,
+                'inserts': [],
+                }
+            self.continuations.append(self.expectInserts)
+        else:
+            self.continuations = []
+            return self.writeln("!Unknown multiple op '%s'" % op)
+
+    def expectProps(self, line):
+        # Store previous value
+        if self.prop_name is not None:
+            if self.prop_values is not None:
+                v = self.prop_values
+            else:
+                v = self.prop_value
+            self.command['props'][self.prop_name] = v
+        # End props?
+        if line == ',':
+            return
+        else:
+            self.continuations.append(self.expectProps)
+
+        op, name = line[0], line[1:]
+        self.prop_name = unicode(name, 'utf-8')
+        if op == 'P':
+            self.prop_values = None # fill prop_value, not prop_values
+            self.continuations.append(self.expectProp)
+        elif op == 'M':
+            self.prop_value = MARKER # nothing yet
+            self.prop_values = [] # list to fill
+            self.continuations.append(self.expectPropMulti)
+        elif op == 'D':
+            self.prop_value = None
+        else:
+            raise ValueError("Unknown props op '%s'" % op)
+
+    def expectProp(self, line):
+        op, rest = line[0], line[1:]
+        if op == 's':
+            self.io.setString(int(rest))
+            self.continuations.append(self.expectString)
+            return
+        elif op == 'x':
+            self.io.setBinary(int(rest))
+            self.continuations.append(self.expectBinary)
+            return
+        elif op == 'b':
+            value = self.createValue(rest, javax.jcr.PropertyType.BOOLEAN)
+        elif op == 'l':
+            value = self.createValue(rest, javax.jcr.PropertyType.LONG)
+        elif op == 'f':
+            value = self.createValue(rest, javax.jcr.PropertyType.DOUBLE)
+        elif op == 'd':
+            raise NotImplementedError
+            value = XXX
+        elif op == 'r':
+            value = self.createValue(rest, javax.jcr.PropertyType.REFERENCE)
+        else:
+            raise ValueError("Unknown op '%s'" % op)
+        self._storeValue(value)
+
+    def expectString(self, data):
+        s = unicode(data, 'utf-8')
+        value = self.createValue(s)
+        self._storeValue(value)
+
+    def expectBinary(self, bin):
+        input = java.io.ByteArrayInputStream(bin.array(), 0, bin.limit())
+        value = self.createValue(input)
+        self._storeValue(value)
+
+    def _storeValue(self, value):
+        # Keep value a single or multiple
+        if self.prop_values is not None:
+            self.prop_values.append(value)
+        else:
+            self.prop_value = value
+
+    def expectPropMulti(self, line):
+        # Store previous list value
+        if self.prop_value is not MARKER:
+            self.prop_values.append(self.prop_value)
+        # End multiprops?
+        if line == 'M':
+            return
+        else:
+            self.continuations.append(self.expectPropMulti)
+
+        self.expectProp(line)
+
+    def expectInserts(self, line):
+        if line == '%':
+            return
+        else:
+            self.continuations.append(self.expectInserts)
+        name, before = unicode(line, 'utf-8').split('/')
+        self.command['inserts'].append((name, before))
+
+    def processCommands(self, commands):
+        map = {}
+        for command in commands:
+            op = command['op']
+            if op == 'add':
+                puuid = command['puuid']
+                if map.has_key(puuid):
+                    puuid = map[puuid]
+                try:
+                    parent = self.session.getNodeByUUID(puuid)
+                except ItemNotFoundException:
+                    return self.writeln("!No such uuid '%s'" % puuid)
+                try:
+                    node = parent.addNode(command['name'],
+                                          command['node_type'])
+                    node.addMixin('mix:referenceable') # XXX temporary
+                except RepositoryException, e:
+                    return self.writeln("!Cannot add '%s': %s" % (name, e))
+                for key, value in command['props'].items():
+                    try:
+                        node.setProperty(key, value)
+                    except RepositoryException, e:
+                        return self.writeln("!Cannot set prop '%s' to '%s': %s"
+                                            % (key, value, e))
+                map[command['token']] = node.getUUID()
+            elif op == 'modify':
+                uuid = command['uuid']
+                if map.has_key(uuid):
+                    uuid = map[uuid]
+                try:
+                    node = self.session.getNodeByUUID(uuid)
+                except ItemNotFoundException:
+                    return self.writeln("!No such uuid '%s'" % uuid)
+                for key, value in command['props'].items():
+                    try:
+                        node.setProperty(key, value)
+                    except RepositoryException, e:
+                        return self.writeln("!Cannot set prop '%s' to '%s': %s"
+                                            % (key, value, e))
+            elif op == 'remove':
+                uuid = command['uuid']
+                if map.has_key(uuid):
+                    uuid = map[uuid]
+                try:
+                    node = self.session.getNodeByUUID(uuid)
+                except ItemNotFoundException:
+                    return self.writeln("!No such uuid '%s'" % uuid)
+                try:
+                    node.remove()
+                except RepositoryException, e:
+                    return self.writeln("!Cannot remove node '%s': %s"
+                                        % (uuid, e))
+            elif op == 'reorder':
+                uuid = command['uuid']
+                if map.has_key(uuid):
+                    uuid = map[uuid]
+                try:
+                    node = self.session.getNodeByUUID(uuid)
+                except ItemNotFoundException:
+                    return self.writeln("!No such uuid '%s'" % uuid)
+                for name, before in command['inserts']:
+                    try:
+                        node.orderBefore(name, before)
+                    except RepositoryException, e:
+                        return self.writeln("!Cannot reorder '%s', "
+                                            "'%s' before '%s': %s" %
+                                            (uuid, name, before, e))
+        try:
+            self.root.save()
+        except RepositoryException, e:
+            return self.writeln("!Cannot save")
+
+        # Write token map
+        for token, uuid in map.items():
+            self.writeln('%s %s' % (token, uuid))
+
+        # Done!
+        self.writeln('.')
+
+    _ops = {
         '?': (cmdHelp, "This help."),
         'q': (cmdQuit, "Quit this connection."),
         'Q': (cmdStop, "Stop the server and all connections."),
@@ -518,13 +634,13 @@ class Processor:
 
 
     def cmdCommand(self, line):
-        print 'processing', repr(line)
+        print "XXX processing command", repr(line)
         if not line: # XXX
             return
         if line.lower() == 'help': # XXX
             line = '?'
         cmd, rest = line[0], line[1:]
-        info = self.commands.get(cmd)
+        info = self._ops.get(cmd)
         if info is not None:
             func = info[0]
             func(self, rest)
@@ -538,31 +654,6 @@ class Processor:
             continuation = self.cmdCommand
         continuation(line)
 
-    def cmdMultiple(self, line=None):
-        self.continuations.append(expectMultipleOne)
-
-    def expectMultipleOne(self, line):
-        op, rest = line[0], line[1:]
-        if op == '+': # add
-            raise NotImplementedError
-        elif op == '/': # modify
-            raise NotImplementedError
-        elif op == '-': # remove
-            raise NotImplementedError
-        elif op == '%': # reorder
-            raise NotImplementedError
-        elif op == '.': # end
-            return self.processCommands()
-            raise NotImplementedError
-        else:
-            self.continuations = []
-            return self.writeln("!Unknown multiple op '%s'" % op)
-
-    def processCommands(self):
-        self.continuations = []
-        
-
-
 class IO:
     """I/O manager, reads lines and passes them to a processor.
     """
@@ -571,7 +662,9 @@ class IO:
         self.processor = Processor(self, repository)
         self.key = key
         self.channel = key.channel()
-        self.rbbuf = java.nio.ByteBuffer.allocate(16384)
+        self.rbbuf = java.nio.ByteBuffer.allocate(8192)
+        self.bin = None # A byte buffer for binary data
+        self.strlen = 0 # Length of string to return instead of readline
         self.unprocessed = [] # Unprocessed data already read
         self.towrite = [] # Pending data to write
 
@@ -580,35 +673,85 @@ class IO:
         self.key.cancel() # remove channel from selector
         self.channel.close() # close socket
 
-    def doRead(self):
-        """Called by server when it's possible to read.
+    def setBinary(self, l):
+        """Next process expects l bytes of data (followed by '\n').
         """
+        self.bin = java.nio.ByteBuffer.allocate(l+1)
+
+    def setString(self, l):
+        self.strlen = l+1
+
+    def doRead(self):
+        """Called by server when it's possible to read something.
+        """
+        # Read binary data
+        if self.bin is not None:
+            n = self.channel.read(self.bin)
+            if n == -1:
+                # EOF
+                self.close()
+                return
+            if not self.bin.hasRemaining():
+                # Just finished a binary
+                self.processBinary()
+            return
+
+        # Else read non-binary data
         n = self.channel.read(self.rbbuf)
         if n == -1:
             # EOF
             self.close()
             return
-
         # Convert buffer to string
         self.rbbuf.flip()
         s = latinDecoder.decode(self.rbbuf).toString()
         self.rbbuf.clear()
         self.unprocessed.append(s)
 
-        # Pass all full lines to the processor
-        # XXX Not memory efficient
-        data = ''.join(self.unprocessed)
-        while True:
-            pos = data.find('\n')
-            if pos == -1:
-                break
-            line = data[:pos]
-            data = data[pos+1:]
-            self.processor.process(line)
-        if data:
-            self.unprocessed = [data]
+        # Pass all full lines/binaries to the processor
+        # XXX Not completely memory efficient
+        todo = ''.join(self.unprocessed)
+        while todo:
+            if self.bin is None:
+                if self.strlen:
+                    # Want a string of given length
+                    if len(todo) < self.strlen:
+                        # Not enough data yet
+                        break
+                    pos = self.strlen - 1
+                    self.strlen = 0
+                else:
+                    pos = todo.find('\n')
+                    if pos == -1:
+                        break
+                line, todo = todo[:pos], todo[pos+1:] # skip '\n'
+                self.processor.process(line)
+            else:
+                remaining = self.bin.remaining()
+                data, todo = todo[:remaining], todo[remaining:]
+                # Put unprocessed data into the bin byte buffer
+                latinEncoder.encode(java.nio.CharBuffer.wrap(data), self.bin,
+                                    True)
+                if self.bin.hasRemaining():
+                    break
+                # Just finished a binary
+                self.processBinary()
+
+        if todo:
+            self.unprocessed = [todo]
         else:
             self.unprocessed = []
+
+    def processBinary(self):
+        bin = self.bin
+        self.bin = None
+        limit = bin.limit()
+        char = bin.get(limit-1)
+        if char != 0x0a:
+            raise ValueError("Bad terminator: %d" % char)
+        bin.limit(limit-1)
+        bin.position(0)
+        self.processor.process(bin)
 
     def doWrite(self):
         """Called by server when it's possible to write.
@@ -652,7 +795,7 @@ class Server:
         listenChannel.socket().bind(isa)
         listenChannel.register(selector, SelectionKey.OP_ACCEPT)
 
-        print 'Listening...'
+        print "Listening."
 
         while selector.select() > 0:
             iter = selector.selectedKeys().iterator()
@@ -667,7 +810,19 @@ class Server:
                     newkey.attach(io)
                     io.write("Welcome.\n")
                 elif key.isReadable():
-                    key.attachment().doRead()
+                    io = key.attachment()
+                    try:
+                        io.doRead()
+                    except (ValueError, KeyError,
+                            RepositoryException), e:
+                        io.towrite = []
+                        io.write("!Error: %s\n" % e)
+                        try:
+                            io.doWrite()
+                            io.close()
+                        except:
+                            pass
+                        print "XXX Trapped exception %s" % e
                 elif key.isWritable():
                     key.attachment().doWrite()
 
@@ -680,8 +835,69 @@ class Server:
                 io.close()
 
 
-def run_server(repoconf, repopath, port):
+def checkRepositoryInit(root):
+    """Check that things are ok in the repository, after creation.
+    """
+    if not root.isNodeType('mix:referenceable'):
+        root.addMixin('mix:referenceable')
+    if not root.hasNode('toto'):
+        node = root.addNode('toto', 'nt:unstructured')
+        node.addMixin('mix:versionable')
+        root.save()
+        node.checkin()
+        node.checkout()
+        node.setProperty('foo', 'hello bob')
+        root.save()
+        node.checkin()
+    node = root.getNode('toto')
+    if not node.hasProperty('bool'):
+        node.checkout()
+        node.setProperty('bool', 'true', javax.jcr.PropertyType.BOOLEAN)
+        root.save()
+        node.checkin()
+
+
+def setupNodeTypes(repository, cndpath):
+    session = repository.login(CREDENTIALS, 'default')
+    workspace = session.getWorkspace()
+    ntm = workspace.getNodeTypeManager()
+    nsr = workspace.getNamespaceRegistry()
+
+    # read cnd
+    fileReader = java.io.FileReader(cndpath)
+    cndReader = CompactNodeTypeDefReader(fileReader, cndpath)
+
+    # register namespaces read
+    nsm = cndReader.getNamespaceMapping()
+    for entry in nsm.getPrefixToURIMapping().entrySet():
+        prefix = entry.getKey()
+        uri = entry.getValue()
+        try:
+            nsr.registerNamespace(prefix, uri)
+        except javax.jcr.NamespaceException:
+            # already registered
+            pass
+    # register node types
+    ntr = ntm.getNodeTypeRegistry();
+    ntr.registerNodeTypes(cndReader.getNodeTypeDefs())
+
+    checkRepositoryInit(session.getRootNode())
+    session.save()
+    session.logout()
+
+    # record node type defs source
+    global NODETYPEDEFS
+    NODETYPEDEFS = open(cndpath).read()
+
+
+def run_server(repoconf, repopath, cndpath, port):
+    try:
+        # Remove previous nodetypes, we'll reimport them
+        os.remove(repopath+'/repository/nodetypes/custom_nodetypes.xml')
+    except OSError:
+        pass
     repository = TransientRepository(repoconf, repopath)
+    setupNodeTypes(repository, cndpath)
     try:
         server = Server(repository)
         server.acceptConnections(port)
@@ -690,11 +906,14 @@ def run_server(repoconf, repopath, port):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 3:
-        print >>sys.stderr, "Usage: server.py <repopath> <port>"
+    if len(sys.argv) != 4:
+        print >>sys.stderr, "Usage: server.py <repopath> <cndpath> <port>"
         sys.exit(1)
 
     repopath = sys.argv[1]
     repoconf = repopath+'.xml'
-    port = int(sys.argv[2])
-    run_server(repoconf, repopath, port)
+    cndpath = sys.argv[2]
+    port = int(sys.argv[3])
+    run_server(repoconf, repopath, cndpath, port)
+
+

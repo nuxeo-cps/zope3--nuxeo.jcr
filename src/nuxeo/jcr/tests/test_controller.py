@@ -17,9 +17,21 @@
 """
 
 import unittest
+from difflib import ndiff
 from datetime import datetime
 
+from nuxeo.capsule.base import Blob
+from nuxeo.capsule.base import Reference
+
 from nuxeo.jcr.controller import JCRController
+
+
+class fakedict(object):
+    """Fake dict with a iteritems() that returns things in order."""
+    def __init__(self, *items):
+        self._items = items
+    def iteritems(self):
+        return self._items
 
 
 class FakeSocket(object):
@@ -132,41 +144,24 @@ class ProtocolTest(unittest.TestCase):
             'Nuuid2 type2 bar',
             'Nuuid3 type3 baz',
 
-            'Pastring',
-            's10', 'caf\xc3\xa9 babe',
+            'Pastring\xc3\xa9', 's10', 'caf\xc3\xa9 babe', # len is in bytes
+            'Pabin', 'x9', 'caf\xe9 babe',
+            'Palong', 'l123123123123',
+            'Pafloat', 'f123.456789',
+            'Pabool', 'bfalse',
+            'Pdate1', 'd2006-04-07T18:00:42.754Z', # XXX
+            'Pdate2', 'd2006-04-07T18:00:42.754+02:00', # XXX
+            'Paname', 'ndc:title',
+            'Papath', 'p/foo/bar:baz',
+            'Paref', 'rabc-def-ghijk',
 
-            'Pabin',
-            'x10', 'caf\xc3\xa9 babe',
+            'Mempty',
+            'M',
 
-            'Palong',
-            'l123123123123',
-
-            'Pafloat',
-            'f123.456789',
-
-            'Pabool',
-            'b0',
-
-            'Pdate1',
-            'd2006-04-07T18:00:42.754Z',
-
-            'Pdate2',
-            'd2006-04-07T18:00:42.754+02:00',
-
-            'Paname',
-            'ndc:title',
-
-            'Papath',
-            'p/foo/bar:baz',
-
-            'Paref',
-            'rabc-def-ghijk',
-
-            'M0 empty',
-
-            'M2 multstr',
+            'Mmultstr',
             's5', 'abcde',
             's8', '12345678',
+            'M',
 
             'Dsomedeferred',
 
@@ -177,15 +172,13 @@ class ProtocolTest(unittest.TestCase):
 
             'Nsubchild-uuid typemoo moo',
 
-            'Pbool',
-            'b1',
+            'Pbool', 'btrue',
 
             # other unrequested node
 
             'Uuuid3 baz',
             '^baz-parent-uuid',
-            'Ptitle',
-            's5', 'Title',
+            'Ptitle', 's5', 'Title',
 
             '.\n')))
         states = c.getNodeStates(['uuid', 'uuid1'])
@@ -193,18 +186,18 @@ class ProtocolTest(unittest.TestCase):
         self.assertEqual(c._unprocessed, [])
         self.assertEqual(sorted(states.keys()), ['uuid', 'uuid1', 'uuid3'])
         expected1 = [
-            ('astring', u'caf\xe9 babe'),
-            ('abin', 'caf\xc3\xa9 babe'),
-            ('along', 123123123123),
-            ('afloat', 123.456789),
-            ('abool', False),
-            ('date1', datetime(2006, 04, 07, 18, 0, 42, 754000)),
-            ('date2', 'XXX'),
-            ('aname', 'dc:title'),
-            ('apath', '/foo/bar:baz'),
-            ('aref', 'abc-def-ghijk'),
-            ('empty', []),
-            ('multstr', ['abcde', '12345678']),
+            (u'astring\xe9', u'caf\xe9 babe'),
+            (u'abin', Blob('caf\xe9 babe')),
+            (u'along', 123123123123),
+            (u'afloat', 123.456789),
+            (u'abool', False),
+            (u'date1', datetime(2006, 04, 07, 18, 0, 42, 754000)),
+            (u'date2', 'XXX'),
+            (u'aname', 'dc:title'),
+            (u'apath', '/foo/bar:baz'),
+            (u'aref', 'abc-def-ghijk'),
+            (u'empty', []),
+            (u'multstr', ['abcde', '12345678']),
             ]
         name, parent_uuid, children, props, deferred = states['uuid']
         self.assertEqual(name, 'somename')
@@ -214,10 +207,14 @@ class ProtocolTest(unittest.TestCase):
                                     ('baz', 'uuid3', 'type3')])
         self.assertEqual([t[0] for t in props], [t[0] for t in expected1])
         for i, (key, value) in enumerate(expected1):
+            v = props[i][1]
+            if isinstance(value, Blob):
+                self.assertEqual(type(value), type(v))
+                self.assertEqual(value.data, v.data)
+                continue
             if key.startswith('date'):
                 continue # XXX
-            self.assertEqual(value, props[i][1],
-                             '%s: %r != %r' % (key, value, props[i][1]))
+            self.assertEqual(value, v, '%s: %r != %r' % (key, value, v))
         self.assertEqual(deferred, ['somedeferred'])
 
         # second node
@@ -237,6 +234,74 @@ class ProtocolTest(unittest.TestCase):
         self.assertEqual(children, [])
         self.assertEqual(props, [('title', u'Title')])
         self.assertEqual(deferred, [])
+
+
+    def test_sendCommands(self):
+        commands = [
+            ('add', 'puuid1', u'fo\xe9', 'folder', fakedict(
+                (u'astring', u'caf\xe9'),
+                (u'ablob', Blob('expos\xe9')),
+                (u'aint', 123),
+                (u'afloat', 3.14),
+                (u'adate', datetime(2006, 04, 07, 18, 0, 42, 754000)),
+                (u'abool', True),
+                (u'aref', Reference('dead-beef')),
+                (u'multstr', [u'foo', u'bar']),
+                ), 't1'),
+            ('modify', 'uuid2', fakedict(
+                (u'astring\xe9', u'foo'),
+                (u'killme', None),
+                )),
+            ('remove', 'uuid3'),
+            ('reorder', 'uuid4', (
+                (u'a', u'b\xe9'),
+                (u'c\xe9', u'd'),
+                )),
+            ]
+        expect_sent = '\n'.join((
+            'M',
+
+            '+puuid1 folder t1 fo\xc3\xa9',
+            'Pastring', 's5', 'caf\xc3\xa9',
+            'Pablob', 'x6', 'expos\xe9',
+            'Paint', 'l123',
+            'Pafloat', 'f3.14',
+            'Padate', 'd2006-04-07T18:00:42.754000',
+            'Pabool', 'btrue',
+            'Paref', 'rdead-beef',
+            'Mmultstr',
+              's3', 'foo',
+              's3', 'bar',
+            'M', # end multiple
+            ',', # end props
+
+            '/uuid2',
+            'Pastring\xc3\xa9', 's3', 'foo',
+            'Dkillme',
+            ',', # end props
+
+            '-uuid3',
+
+            '%uuid4',
+            'a/b\xc3\xa9',
+            'c\xc3\xa9/d',
+            '%',
+
+            '.\n'))
+        c = self.makeOne('\n'.join((
+            't1 uuid1',
+            '.\n')))
+        map = c.sendCommands(commands)
+        sent = c._sock.sent
+        if sent != expect_sent:
+            print "\nDifferences in output:"
+            print ''.join(ndiff(expect_sent.splitlines(1),
+                                sent.splitlines(1)))
+        self.assertEqual(sent, expect_sent)
+        self.assertEqual(c._unprocessed, [])
+        self.assertEqual(sorted(map.items()), [
+            ('t1', 'uuid1'),
+            ])
 
 
 def test_suite():

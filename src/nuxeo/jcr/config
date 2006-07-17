@@ -1,2 +1,4 @@
 JCR.JCRController=jcrcontroller:default -p 10000
 JCR.Endpoints=default -p 10000
+Ice.ThreadPool.Client.SizeMax=1
+Ice.ThreadPool.Server.SizeMax=1
