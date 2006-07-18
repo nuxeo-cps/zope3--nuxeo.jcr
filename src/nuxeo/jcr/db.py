@@ -22,6 +22,7 @@ from zope.app.container.interfaces import IContainer
 from nuxeo.capsule.interfaces import IDocument
 from nuxeo.capsule.interfaces import IWorkspace
 from nuxeo.capsule.interfaces import IObjectBase
+from nuxeo.capsule.interfaces import IChildren # XXX IRoot
 from nuxeo.jcr.schema import SchemaManager
 from nuxeo.jcr.impl import Children
 from nuxeo.jcr.impl import Document
@@ -49,9 +50,6 @@ class DB(ZODBDB):
                  pool_size=7,
                  server=None,
                  workspace_name='default',
-                 controller_class_name='',
-                 slice_file='',
-                 ice_config='',
                  ):
         """Create a database which connects to a JCR.
         """
@@ -59,20 +57,11 @@ class DB(ZODBDB):
 
         self.server = server # ZConfig.datatypes.SocketConnectionAddress
         self.workspace_name = workspace_name
-        self.slice_file = slice_file # Path to Ice slice file
-        self.ice_config = ice_config # Path to Ice config
-        index = controller_class_name.rindex('.')
-        mname = controller_class_name[:index]
-        cname = controller_class_name[index+1:]
-        module = __import__(mname, globals(), locals(), cname)
-        self.controller_class = getattr(module, cname)
         super(DB, self).__init__(NoStorage(),
                                  pool_size=pool_size,
                                  cache_size=cache_size,
                                  database_name=database_name,
                                  databases=databases)
-
-
 
     def loadSchemas(self, controller):
         """Load the schemas from the database, and synthesizes
@@ -96,9 +85,12 @@ class DB(ZODBDB):
 
         # XXX use a schema of ours, and distinguish dict from list
         sm.addSchema('IContainer', IContainer)
+        sm.addSchema('ecmnt:children', IChildren)
+        sm.addSchema('rep:root', IChildren) # XXX IRoot
 
         # Set base classes
-        sm.setClass('rep:root', Workspace)
+        sm.setClass('rep:root', Children) # XXX Workspace? Root?
+        sm.setClass('ecmnt:workspace', Workspace)
         sm.setClass('ecmnt:document', Document)
         sm.setClass('ecmnt:schema', ObjectProperty)
         sm.setClass('ecmnt:children', Children)
@@ -117,8 +109,11 @@ class DB(ZODBDB):
     def getClass(self, node_type):
         """Get the class for a given JCR node type.
         """
+        if node_type == 'rep:root':
+            return Children # XXX
         klass = self._schema_manager.getClass(node_type, None)
         if klass is None:
+            import pdb; pdb.set_trace()
             raise ValueError("Unknown node type: %r" % node_type)
         return klass
 

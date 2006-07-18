@@ -18,7 +18,7 @@
 
 from ZODB.ActivityMonitor import ActivityMonitor
 from Zope2.Startup.datatypes import ZopeDatabase
-from nuxeo.jcr.db import DB as JCRDB
+from nuxeo.jcr.db import DB
 
 class JCRDatabaseFactory(ZopeDatabase):
     """JCR Database factory.
@@ -33,14 +33,11 @@ class JCRDatabaseFactory(ZopeDatabase):
         config = self.config
         #config.database_name = database_name
         config.container_class = 'OFS.Folder.Folder' # XXX
-        return JCRDB(
+        return DB(
             database_name=database_name,
             databases=databases,
             cache_size=config.cache_size,
             pool_size=config.pool_size,
             server=config.jcr_server,
             workspace_name=config.jcr_workspace_name,
-            controller_class_name=config.jcr_controller_class_name,
-            slice_file=config.jcr_slice_file,
-            ice_config=config.jcr_ice_config,
             )
