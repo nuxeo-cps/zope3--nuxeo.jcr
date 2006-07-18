@@ -874,12 +874,20 @@ def setupNodeTypes(repository, cndpaths):
     # read all cnd files into one string
     global NODETYPEDEFS
     NODETYPEDEFS = ''
+    ns = []
+    rest = []
     for cndpath in cndpaths:
-        NODETYPEDEFS += open(cndpath).read() + '\n'
+        defs = open(cndpath).read()
+        for line in defs.split('\n'):
+            if line and line[0] == '<' and line[-1] == '>':
+                ns.append(line)
+            else:
+                rest.append(line)
+    NODETYPEDEFS = '\n'.join(ns) + '\n' + '\n'.join(rest)
 
     # parse cnd
     reader = java.io.StringReader(NODETYPEDEFS)
-    cndReader = CompactNodeTypeDefReader(reader, 'CND')
+    cndReader = CompactNodeTypeDefReader(reader, 'ALL-CND')
 
     # register namespaces read
     nsm = cndReader.getNamespaceMapping()
