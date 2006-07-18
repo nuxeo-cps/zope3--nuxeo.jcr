@@ -1,5 +1,6 @@
 #!/bin/sh
 # Capsule JCR server controller
+# $Id$
 
 JARS=$HOME/Java/lib # default
 
