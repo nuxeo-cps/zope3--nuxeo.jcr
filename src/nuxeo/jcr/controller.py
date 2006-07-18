@@ -52,7 +52,6 @@ class JCRController(object):
     zope.interface.implements(IJCRController)
 
     _sock = None
-    _state = 'disconnected'
 
     def __init__(self, db):
         # db.server is a ZConfig.datatypes.SocketConnectionAddress
@@ -72,12 +71,11 @@ class JCRController(object):
                 if err in (errno.EINTR, errno.EALREADY):
                     continue
                 if err in (errno.ECONNREFUSED, errno.ECONNRESET):
-                    raise ValueError("Connection refused to JCR server "
-                                     "%s:%s" % server.address)
+                    raise IOError("Connection refused to JCR server "
+                                  "%s:%s" % server.address)
                 raise
             break
         self._sock = sock
-        self._state = 'connected'
         self._readline() # XXX Welcome message
 
     # Note: we don't bother using select and multiplexing reads with
@@ -85,6 +83,7 @@ class JCRController(object):
     # buffer in both directions and will therefore prevent deadlocks.
 
     def _write(self, data):
+        print 'XXX > %r' % data
         self._sock.sendall(data)
 
     def _writeline(self, data):
@@ -144,7 +143,9 @@ class JCRController(object):
             self._unprocessed[0] = last[pos+toskip:]
         else:
             del self._unprocessed[0]
-        return ''.join(chunks)
+        data = ''.join(chunks)
+        print 'XXX < %r' % data
+        return data
 
     def _pushback(self, line):
         self._unprocessed.insert(0, line+'\n')
@@ -439,165 +440,3 @@ class JCRController(object):
         if line == '.':
             return
         raise ConflictError(line)
-
-
-class JCRIceController(object):
-    """JCR Controller.
-
-    Does synchronous communication with a JCR server using Ice protocol.
-    """
-    zope.interface.implements(IJCRController)
-
-    def __init__(self, db):
-        import Ice
-        self.ice_config = db.ice_config
-        slice_file = db.slice_file
-        Ice.loadSlice(slice_file)
-        # Here we suggest that file name without extension is the name
-        # of module.
-        mname = os.path.splitext(os.path.split(slice_file)[1])[0]
-        globals()[mname] = __import__(mname, globals(), locals())
-
-    def connect(self):
-        """Connect the controller to the server.
-        """
-        import Ice
-        try:
-            props = Ice.createProperties()
-            props.load(self.ice_config)
-            communicator = Ice.initializeWithProperties(sys.argv, props)
-            properties = communicator.getProperties()
-            refprop = 'JCR.JCRController'
-            string_proxy = properties.getProperty(refprop)
-            proxy = communicator.stringToProxy(string_proxy)
-            self.server = jcr.JCRControllerPrx.checkedCast(proxy)
-        except:
-            traceback.print_exc()
-
-    # API
-
-    def login(self, workspaceName):
-        """See IJCRController.
-        """
-        return self.server.login(workspaceName)
-
-    def getNodeTypeDefs(self):
-        """See IJCRController.
-        """
-        return self.server.getNodeTypeDefs()
-
-    def getNodeType(self, uuid):
-        """See IJCRController.
-        """
-        return self.server.getNodeType(uuid)
-
-    def getNodeStates(self, uuids):
-        """See IJCRController.
-        """
-        info = {}
-        states = self.server.getNodeStates(uuids)
-
-        for uuid, nstate in states.items():
-            properties = []
-            for prop in nstate.properties:
-                ptype = prop.type
-                if prop.multiple:
-                    values = [self._getOneValue(v, ptype) for v in prop.value]
-                    properties.append((prop.name, values))
-                else:
-                    value = self._getOneValue(prop.value[0], ptype)
-                    properties.append((prop.name, value))
-
-            parent_uuid = nstate.parentuuid
-            if parent_uuid == '':
-                parent_uuid = None
-            info[uuid] = (nstate.nodename, parent_uuid, nstate.children,
-                           properties, nstate.deferred)
-
-        return info
-
-    # Utility methods
-
-    def _toString(self, value, decode=True):
-        if decode:
-            return value.decode('utf-8')
-        else:
-            return value
-
-    def _toBinary(self, value):
-        #return self._toString(value, decode=False)
-        return value
-
-    def _toLong(self, value):
-        return int(value)
-
-    def _toFloat(self, value):
-        return float(value)
-
-    def _toDate(self, value):
-        # D2006-04-07T18:00:42.754Z
-        # D2006-04-07T18:00:42.754+02:00
-        return datetime(2006, 01, 01) # XXX
-
-    def _toBoolean(self, value):
-        if value == 'false':
-            return False
-        elif value == 'true':
-            return True
-
-    def _toName(self, value):
-        return value
-
-    def _toPath(self, value):
-        return value
-
-    def _toReference(self, value):
-        return value
-
-    _valueConverters = {
-        'string': _toString,
-        'binary': _toBinary,
-        'long': _toLong,
-        'float': _toFloat,
-        'date': _toDate,
-        'boolean': _toBoolean,
-        'name': _toName,
-        'path': _toPath,
-        'reference': _toReference,
-        }
-
-    def _getOneValue(self, value, type):
-        """Read one value.
-        """
-        converter = self._valueConverters.get(type)
-        return converter(self, value)
-
-    def sendCommands(self, commands):
-        """See IJCRController.
-        """
-        raise NotImplementedError
-
-    def getNodeProperties(self, uuid, names):
-        """See IJCRController.
-        """
-        raise NotImplementedError('Unused')
-
-    def getPendingEvents(self):
-        """See IJCRController.
-        """
-        raise NotImplementedError('Unused')
-
-    def prepare(self):
-        """See IJCRController.
-        """
-        raise NotImplementedError
-
-    def commit(self):
-        """See IJCRController.
-        """
-        raise NotImplementedError
-
-    def abort(self):
-        """See IJCRController.
-        """
-        raise NotImplementedError
