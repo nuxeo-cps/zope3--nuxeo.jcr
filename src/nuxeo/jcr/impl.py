@@ -150,7 +150,11 @@ class ObjectBase(CapsuleObjectBase):
             k, v = func(self)
             self._p_jar.setProperty(self, k, v)
         else:
-            if not name.startswith('_p_') and self._p_jar is not None:
+            if name == '_v__object_deleted__':
+                return
+            if (not name.startswith('_p_')
+                and self._p_jar is not None
+                ):
                 print "XXX illegal direct setattr(%s, %r, %r)" % (
                     self.__class__.__name__, name, value)
             super(ObjectBase, self).__setattr__(name, value)
