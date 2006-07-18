@@ -891,7 +891,16 @@ def setupNodeTypes(repository, cndpaths):
 
     # parse cnd
     reader = java.io.StringReader(NODETYPEDEFS)
-    cndReader = CompactNodeTypeDefReader(reader, 'ALL-CND')
+    try:
+        cndReader = CompactNodeTypeDefReader(reader, 'ALL-CND')
+    except:
+        print '--'
+        i = 0
+        for line in NODETYPEDEFS.split('\n'):
+            i += 1
+            print '%4d %s' % (i, line)
+        print '--'
+        raise
 
     # register namespaces read
     nsm = cndReader.getNamespaceMapping()
