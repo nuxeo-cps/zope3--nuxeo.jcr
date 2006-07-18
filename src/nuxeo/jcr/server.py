@@ -38,6 +38,8 @@ java -Dpython.home=$jython \
 
 """
 
+DEBUG = 0
+
 import os
 import sys
 from types import ListType
@@ -688,6 +690,8 @@ class IO:
         # Read binary data
         if self.bin is not None:
             n = self.channel.read(self.bin)
+            if DEBUG:
+                print 'XXX < (%d bytes)' % n
             if n == -1:
                 # EOF
                 self.close()
@@ -708,6 +712,8 @@ class IO:
         s = latinDecoder.decode(self.rbbuf).toString()
         self.rbbuf.clear()
         self.unprocessed.append(s)
+        if DEBUG:
+            print 'XXX < %s' % repr(s)
 
         # Pass all full lines/binaries to the processor
         # XXX Not completely memory efficient
@@ -762,6 +768,8 @@ class IO:
         l = len(data)
         bbuf = latinEncoder.encode(java.nio.CharBuffer.wrap(data))
         n = self.channel.write(bbuf)
+        if DEBUG:
+            print 'XXX - %s' % repr(data[:n])
         if n != l:
             #print 'short write! %d written out of %d' % (n, l)
             self.towrite = [data[n:]]
