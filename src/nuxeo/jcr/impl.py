@@ -86,20 +86,22 @@ class ObjectBase(CapsuleObjectBase):
         return 'ecm:security', s
 
     def _map_prop_to_localroles(self, value, state):
-        try:
-            u = {}
-            g = {}
-            for i in str(value or '').split(';'):
-                k, v = i.split('=')
-                if k.startswith('user:'):
-                    u[k[5:]] = v.split(',')
-                elif k.startswith('group:'):
-                    g[k[6:]] = v.split(',')
-                else:
-                    raise ValueError(k)
-        except ValueError:
-            #logger.debug("Illegal string %r for ecm:localroles", value)
-            raise ValueError("Illegal string %r for ecm:localroles" % value)
+        u = {}
+        g = {}
+        if value:
+            try:
+                for i in str(value).split(';'):
+                    k, v = i.split('=')
+                    if k.startswith('user:'):
+                        u[k[5:]] = v.split(',')
+                    elif k.startswith('group:'):
+                        g[k[6:]] = v.split(',')
+                    else:
+                        raise ValueError(k)
+            except ValueError:
+                #logger.debug("Illegal string %r for ecm:localroles", value)
+                raise ValueError("Illegal string %r for ecm:localroles"
+                                 % value)
         if u:
             state['__ac_local_roles__'] = u
         else:
@@ -115,8 +117,10 @@ class ObjectBase(CapsuleObjectBase):
             if k.startswith('_') and k.endswith('_Permission'):
                 del state[k]
         # Set new state
+        if not value:
+            return
         try:
-            for i in str(value or '').split(';'):
+            for i in str(value).split(';'):
                 k, v = i.split('=')
                 if k[-1] == '+':
                     k = k[:-1]
