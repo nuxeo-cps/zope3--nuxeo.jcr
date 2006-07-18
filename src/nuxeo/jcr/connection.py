@@ -51,20 +51,8 @@ from nuxeo.jcr.impl import ContainerBase
 from nuxeo.jcr.impl import NoChildrenYet
 from nuxeo.jcr.impl import ObjectProperty
 
+
 _MARKER = object()
-
-class Root(object):
-    """Base storage root that only allows traversal to the real root.
-
-    A mount points always traverses to an explicit root in the storage,
-    or by default to 'Application'.
-    """
-    def __init__(self, cnx):
-        self.cnx = cnx
-    def __getitem__(self, key):
-        if key != 'Application':
-            raise KeyError(key)
-        return self.cnx.get(self.cnx.root_uuid)
 
 
 class Connection(object):
@@ -208,12 +196,28 @@ class Connection(object):
         # loadBefore() only returns non-version data.
         self._txn_time = None
 
-    def open(self, transaction_manager=None, mvcc=True, synch=True):
+    def db(self):
+        """Returns the databse.
+
+        Called by serialize.ObjectWriter to check database in case of
+        foreign database storage.
+        """
+        return self._db
+
+    def _implicitlyAdding(self, oid):
+        """Called by serialize.ObjectWriter.
+        """
+        return False
+
+    def open(self, transaction_manager=None, mvcc=True, synch=True,
+             delegate=None):
         """Open this connection for use.
 
         This method is called by the DB every time a Connection is
         opened. Any invalidations received while the Connection was
         closed will be processed.
+
+        `delegate` is used by ZODB.Connection for multi-database opens.
         """
         self._opened = time.time()
         self._synch = synch
@@ -233,6 +237,20 @@ class Connection(object):
         #    for connection in self.connections.values():
         #        if connection is not self:
         #            connection.open(transaction_manager, mvcc, synch, False)
+
+    def close(self, primary=None):
+        """Called by App.ZApplication to cleanup.
+        """
+        if not self._needs_to_join:
+            raise ConnectionStateError("Cannot close a connection joined to "
+                                       "a transaction")
+        self.cacheGC()
+
+        if self._synch:
+            self.transaction_manager.unregisterSynch(self)
+            self._synch = False
+
+        self._opened = None # XXX
 
     def cacheGC(self):
         """Reduce cache size to target size.
@@ -578,7 +596,7 @@ class Connection(object):
     def root(self):
         """Get database root object.
         """
-        return Root(self)
+        return self.get(self.root_uuid)
 
     def get(self, oid, node_type=None):
         """Get the persistent object with a given oid.
@@ -759,6 +777,8 @@ class Connection(object):
         child_map = {}
         order = [] # XXX check if type is ordered in its schema
         for child_name, child_uuid, child_type in jcrchildren:
+            if child_type == 'nt:unstructured': # XXX skip debug stuff
+                continue
             child = self.get(child_uuid, node_type=child_type)
             child_map[child_name] = child
             order.append(child_name)
