@@ -38,7 +38,7 @@ java -Dpython.home=$jython \
 
 """
 
-DEBUG = 0
+DEBUG = 1
 
 import os
 import sys
@@ -766,7 +766,11 @@ class IO:
         # XXX Not memory efficient
         data = ''.join(self.towrite)
         l = len(data)
-        bbuf = latinEncoder.encode(java.nio.CharBuffer.wrap(data))
+        try:
+            bbuf = latinEncoder.encode(java.nio.CharBuffer.wrap(data))
+        except:
+            print 'XXX failing data %s' % repr(data)
+            raise
         n = self.channel.write(bbuf)
         if DEBUG:
             print 'XXX - %s' % repr(data[:n])
