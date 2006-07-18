@@ -857,15 +857,21 @@ def checkRepositoryInit(root):
         node.checkin()
 
 
-def setupNodeTypes(repository, cndpath):
+def setupNodeTypes(repository, cndpaths):
     session = repository.login(CREDENTIALS, 'default')
     workspace = session.getWorkspace()
     ntm = workspace.getNodeTypeManager()
     nsr = workspace.getNamespaceRegistry()
 
-    # read cnd
-    fileReader = java.io.FileReader(cndpath)
-    cndReader = CompactNodeTypeDefReader(fileReader, cndpath)
+    # read all cnd files into one string
+    global NODETYPEDEFS
+    NODETYPEDEFS = ''
+    for cndpath in cndpaths:
+        NODETYPEDEFS += open(cndpath).read() + '\n'
+
+    # parse cnd
+    reader = java.io.StringReader(NODETYPEDEFS)
+    cndReader = CompactNodeTypeDefReader(reader, 'CND')
 
     # register namespaces read
     nsm = cndReader.getNamespaceMapping()
@@ -885,10 +891,6 @@ def setupNodeTypes(repository, cndpath):
     session.save()
     session.logout()
 
-    # record node type defs source
-    global NODETYPEDEFS
-    NODETYPEDEFS = open(cndpath).read()
-
 
 def run_server(repoconf, repopath, cndpath, port):
     try:
@@ -906,14 +908,14 @@ def run_server(repoconf, repopath, cndpath, port):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 4:
-        print >>sys.stderr, "Usage: server.py <repopath> <cndpath> <port>"
+    if len(sys.argv) < 4:
+        print >>sys.stderr, "Usage: server.py <repopath> <port> <cndpath> <cndpath...>"
         sys.exit(1)
 
     repopath = sys.argv[1]
     repoconf = repopath+'.xml'
-    cndpath = sys.argv[2]
-    port = int(sys.argv[3])
-    run_server(repoconf, repopath, cndpath, port)
+    port = int(sys.argv[2])
+    cndpaths = sys.argv[3:]
+    run_server(repoconf, repopath, cndpaths, port)
 
 
