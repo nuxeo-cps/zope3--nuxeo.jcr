@@ -231,6 +231,8 @@ class NoChildrenYet(object):
         raise TypeError("Can't get type name of NoChildrenYet")
 
     def _getPath(self, first=False):
+        if self.__parent__ is None:
+            return (self.__name__,)
         ppath = self.__parent__._getPath()
         if first:
             return ppath + (self.__name__,)
@@ -318,6 +320,8 @@ class Document(ObjectBase, CapsuleDocument):
 
     Deals with property addition.
     """
+
+    _children = NoChildrenYet(None)
 
     def getUUID(self):
         """See `nuxeo.capsule.interfaces.IDocument`
