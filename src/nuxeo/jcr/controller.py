@@ -32,6 +32,8 @@ from nuxeo.jcr.interfaces import ProtocolError
 from nuxeo.jcr.interfaces import ConflictError
 
 
+DEBUG = False
+
 logger = logging.getLogger('nuxeo.jcr.controller')
 
 
@@ -83,7 +85,8 @@ class JCRController(object):
     # buffer in both directions and will therefore prevent deadlocks.
 
     def _write(self, data):
-        print 'XXX > %r' % data
+        if DEBUG:
+            print 'XXX > %r' % data
         self._sock.sendall(data)
 
     def _writeline(self, data):
@@ -144,7 +147,8 @@ class JCRController(object):
         else:
             del self._unprocessed[0]
         data = ''.join(chunks)
-        print 'XXX < %r' % data
+        if DEBUG:
+            print 'XXX < %r' % data
         return data
 
     def _pushback(self, line):
