@@ -23,7 +23,7 @@ from nuxeo.capsule.interfaces import IDocument
 from nuxeo.capsule.interfaces import IWorkspace
 from nuxeo.capsule.interfaces import IObjectBase
 from nuxeo.capsule.interfaces import IChildren # XXX IRoot
-from nuxeo.jcr.schema import SchemaManager
+import nuxeo.jcr.schema
 from nuxeo.jcr.impl import Children
 from nuxeo.jcr.impl import Document
 from nuxeo.jcr.impl import Workspace
@@ -77,26 +77,33 @@ class DB(ZODBDB):
 
     def _loadSchemas(self, controller):
         # Called with the lock held
-        sm = SchemaManager()
+        sm = nuxeo.jcr.schema.getGlobalSchemaManager()
 
-        # Add node type definitions from the JCR
-        defs = controller.getNodeTypeDefs()
-        sm.addCND(defs)
+        try:
+            # Add node type definitions from the JCR
+            defs = controller.getNodeTypeDefs()
+            sm.addCND(defs)
 
-        # XXX use a schema of ours, and distinguish dict from list
-        sm.addSchema('IContainer', IContainer)
-        sm.addSchema('ecmnt:children', IChildren)
-        sm.addSchema('rep:root', IChildren) # XXX IRoot
+            # XXX use a schema of ours, and distinguish dict from list
+            sm.addSchema('IContainer', IContainer)
+            sm.addSchema('ecmnt:children', IChildren)
+            sm.addSchema('rep:root', IChildren) # XXX IRoot
 
-        # Set base classes
-        sm.setClass('rep:root', Children) # XXX Workspace? Root?
-        sm.setClass('ecmnt:workspace', Workspace)
-        sm.setClass('ecmnt:document', Document)
-        sm.setClass('ecmnt:schema', ObjectProperty)
-        sm.setClass('ecmnt:children', Children)
-        sm.setClass('IContainer', ListProperty)
+            # Set base classes
+            sm.setClass('rep:root', Children) # XXX Workspace? Root?
 
-        return sm
+            # XXX must be done only in unit tests
+            #sm.setClass('ecmnt:workspace', Workspace)
+            #sm.setClass('ecmnt:document', Document)
+            #sm.setClass('ecmnt:schema', ObjectProperty)
+            #sm.setClass('ecmnt:children', Children)
+            #sm.setClass('IContainer', ListProperty)
+
+            return sm
+        except:
+            # Schema loading failed, clean them up
+            nuxeo.jcr.schema._cleanup()
+            raise
 
     def getSchema(self, node_type):
         """Get the schema for a given JCR node type.
@@ -113,7 +120,6 @@ class DB(ZODBDB):
             return Children # XXX
         klass = self._schema_manager.getClass(node_type, None)
         if klass is None:
-            import pdb; pdb.set_trace()
             raise ValueError("Unknown node type: %r" % node_type)
         return klass
 
