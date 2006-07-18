@@ -69,7 +69,7 @@ class ObjectBase(CapsuleObjectBase):
         l = []
         for k, v in sorted(d.iteritems()):
             l.append(k + '=' + ','.join(v))
-        s = ';'.join(l) or None
+        s = unicode(';'.join(l)) or None
         return 'ecm:localroles', s
 
     def _map_security_to_prop(self):
@@ -82,7 +82,7 @@ class ObjectBase(CapsuleObjectBase):
                 else:
                     l.append(k[1:-11] + '=' + ','.join(sorted(v)))
         l.sort()
-        s = ';'.join(l) or None
+        s = unicode(';'.join(l)) or None
         return 'ecm:security', s
 
     def _map_prop_to_localroles(self, value, state):
