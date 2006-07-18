@@ -16,13 +16,32 @@
 """JCR schema management.
 """
 
+import zope.testing.cleanup
 from nuxeo.capsule.schema import SchemaManager as BaseSchemaManager
 from nuxeo.jcr.cnd import InterfaceMaker
 from nuxeo.capsule.interfaces import IDocument
+from nuxeo.capsule.interfaces import IProxy
 from nuxeo.capsule.interfaces import IWorkspace
 from nuxeo.capsule.interfaces import IChildren
 from nuxeo.capsule.interfaces import IResourceProperty
 from nuxeo.capsule.interfaces import IObjectBase
+
+
+_schema_manager = None
+
+def _cleanup():
+    global _schema_manager
+    _schema_manager = None
+zope.testing.cleanup.addCleanUp(_cleanup)
+
+
+def getGlobalSchemaManager():
+    """Get the global schema manager.
+    """
+    global _schema_manager
+    if _schema_manager is None:
+        _schema_manager = SchemaManager()
+    return _schema_manager
 
 
 class SchemaManager(BaseSchemaManager):
@@ -36,6 +55,7 @@ class SchemaManager(BaseSchemaManager):
         default = {
             'rep:root': IWorkspace,
             'ecmnt:document': IDocument,
+            'ecmnt:proxy': IProxy,
             'ecmnt:schema': IObjectBase,
             'ecmnt:children': IChildren,
             'nt:resource': IResourceProperty,

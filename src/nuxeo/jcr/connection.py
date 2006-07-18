@@ -261,13 +261,10 @@ class Connection(object):
 
     ##################################################
 
-    # Capsule API XXX
+    # Capsule API
 
     def getSchemaManager(self):
         return self._db._schema_manager
-
-    def getTypeManager(self):
-        return self._db._type_manager
 
     ##################################################
     # Add/Modify/Remove
