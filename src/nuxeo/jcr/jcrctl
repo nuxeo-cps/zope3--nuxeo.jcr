@@ -1,0 +1,63 @@
+#!/bin/sh
+# Capsule JCR server controller
+
+JARS=$HOME/Java/lib # default
+
+HERE=`dirname $0`
+INSTANCE=$HERE
+CONFFILE=$INSTANCE/etc/jcrctl.conf
+if [ ! -f $CONFFILE ]; then
+    # we're in bin maybe?
+    INSTANCE=$HERE/..
+    CONFFILE=$INSTANCE/etc/jcrctl.conf
+    if [ ! -f $CONFFILE ]; then
+        # maybe next to us
+        INSTANCE=/Unknown/INSTANCE/Put/It/In/Conf/File
+        CONFFILE=$HERE/jcrctl.conf
+        if [ ! -f $CONFFILE ]; then
+            echo "jcrtcl.conf file not found" >&2
+            exit 1
+        fi
+    fi
+fi
+source $CONFFILE
+
+if [ "start" = "$1" -o "fg" = "$1" ]; then
+    cd $INSTANCE
+    LOG=$INSTANCE/log/jcr.log
+    REPO=$INSTANCE/var/jackrabbit
+    SERVER=$INSTANCE/Products/lib/python/nuxeo/jcr/server.py
+
+    CLASSPATH=$JARS/commons-collections-3.1.jar
+    CLASSPATH=$CLASSPATH:$JARS/concurrent-1.3.4.jar
+    CLASSPATH=$CLASSPATH:$JARS/derby-10.1.1.0.jar
+    CLASSPATH=$CLASSPATH:$JARS/geronimo-spec-jta-1.0-M1.jar
+    CLASSPATH=$CLASSPATH:$JARS/jackrabbit-core-1.0.1.jar
+    CLASSPATH=$CLASSPATH:$JARS/jackrabbit-jcr-commons-1.0.1.jar
+    CLASSPATH=$CLASSPATH:$JARS/jcr-1.0.jar
+    CLASSPATH=$CLASSPATH:$JARS/junit-3.8.1.jar
+    CLASSPATH=$CLASSPATH:$JARS/log4j-1.2.8.jar
+    CLASSPATH=$CLASSPATH:$JARS/lucene-1.4.3.jar
+    CLASSPATH=$CLASSPATH:$JARS/slf4j-log4j12-1.0.jar
+    CLASSPATH=$CLASSPATH:$JARS/xercesImpl-2.6.2.jar
+    CLASSPATH=$CLASSPATH:$JARS/xmlParserAPIs-2.0.2.jar
+    export CLASSPATH
+
+    if [ "start" = "$1" ]; then
+        touch $LOG
+        jython $SERVER $REPO $PORT $CNDS >>$LOG 2>&1 &
+    else
+        jython $SERVER $REPO $PORT $CNDS
+    fi
+
+elif [ "stop" = "$1" ]; then
+    echo 'Q' | nc localhost $PORT >/dev/null
+
+elif [ "debug" = "$1" ]; then
+    nc localhost $PORT
+
+else
+    echo "Unknown command $1" >&2
+    echo "Usage: jcrctl [start | fg | stop | debug]" >&2
+    exit 1
+fi
