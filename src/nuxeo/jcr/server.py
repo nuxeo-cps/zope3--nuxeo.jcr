@@ -285,7 +285,7 @@ class Processor:
     def cmdGetNodeChildren(self, uuid):
         try:
             node = self.session.getNodeByUUID(uuid)
-        except ItemNotFoundException:
+        except (ItemNotFoundException, IllegalArgumentException):
             return self.writeln("!No such uuid '%s'" % uuid)
         for subnode in node.getNodes():
             try:
@@ -299,7 +299,7 @@ class Processor:
     def cmdGetNodeType(self, uuid):
         try:
             node = self.session.getNodeByUUID(uuid)
-        except ItemNotFoundException:
+        except (ItemNotFoundException, IllegalArgumentException):
             return self.writeln("!No uuid '%s'" % uuid)
         nodeType = node.getProperty('jcr:primaryType').getString()
         self.writeln('T%s' % nodeType)
@@ -310,7 +310,7 @@ class Processor:
         for node_uuid in uuids:
             try:
                 node = self.session.getNodeByUUID(node_uuid)
-            except ItemNotFoundException:
+            except (ItemNotFoundException, IllegalArgumentException):
                 return self.writeln("!No uuid '%s'" % node_uuid)
         # Fetch all info
         for node_uuid in uuids:
@@ -340,9 +340,10 @@ class Processor:
                 definition = prop.getDefinition()
                 if definition.isMultiple():
                     values = prop.getValues()
-                    self.writeln('M%d %s' % (len(values), name))
+                    self.writeln('M%s' % name)
                     for value in values:
                         self.dumpValue(value)
+                    self.writeln('M')
                 else:
                     self.writeln('P%s' % name)
                     self.dumpValue(prop.getValue())
@@ -366,7 +367,7 @@ class Processor:
     def dumpDate(self, value):
         self.writeln('d%s' % value.getString()) # 2006-04-07T18:00:42.754+02:00
     def dumpBoolean(self, value):
-        self.writeln('b%d' % value.getString())
+        self.writeln('b%s' % value.getString())
     def dumpName(self, value):
         self.writeln('n%s' % value.getString())
     def dumpPath(self, value):
@@ -547,14 +548,14 @@ class Processor:
                     puuid = map[puuid]
                 try:
                     parent = self.session.getNodeByUUID(puuid)
-                except ItemNotFoundException:
+                except (ItemNotFoundException, IllegalArgumentException):
                     return self.writeln("!No such uuid '%s'" % puuid)
                 try:
                     node = parent.addNode(command['name'],
                                           command['node_type'])
-                    node.addMixin('mix:referenceable') # XXX temporary
                 except RepositoryException, e:
-                    return self.writeln("!Cannot add '%s': %s" % (name, e))
+                    print "XXX Cannot add '%s': %s" % (command['name'], e)
+                    return self.writeln("!Cannot add '%s': %s" % (command['name'], e))
                 for key, value in command['props'].items():
                     try:
                         node.setProperty(key, value)
@@ -568,7 +569,7 @@ class Processor:
                     uuid = map[uuid]
                 try:
                     node = self.session.getNodeByUUID(uuid)
-                except ItemNotFoundException:
+                except (ItemNotFoundException, IllegalArgumentException):
                     return self.writeln("!No such uuid '%s'" % uuid)
                 for key, value in command['props'].items():
                     try:
@@ -582,7 +583,7 @@ class Processor:
                     uuid = map[uuid]
                 try:
                     node = self.session.getNodeByUUID(uuid)
-                except ItemNotFoundException:
+                except (ItemNotFoundException, IllegalArgumentException):
                     return self.writeln("!No such uuid '%s'" % uuid)
                 try:
                     node.remove()
@@ -595,7 +596,7 @@ class Processor:
                     uuid = map[uuid]
                 try:
                     node = self.session.getNodeByUUID(uuid)
-                except ItemNotFoundException:
+                except (ItemNotFoundException, IllegalArgumentException):
                     return self.writeln("!No such uuid '%s'" % uuid)
                 for name, before in command['inserts']:
                     try:
@@ -813,8 +814,7 @@ class Server:
                     io = key.attachment()
                     try:
                         io.doRead()
-                    except (ValueError, KeyError,
-                            RepositoryException), e:
+                    except (ValueError, KeyError, RepositoryException), e:
                         io.towrite = []
                         io.write("!Error: %s\n" % e)
                         try:
@@ -822,7 +822,7 @@ class Server:
                             io.close()
                         except:
                             pass
-                        print "XXX Trapped exception %s" % e
+                        print "XXX Trapped exception: %s" % e
                 elif key.isWritable():
                     key.attachment().doWrite()
 
