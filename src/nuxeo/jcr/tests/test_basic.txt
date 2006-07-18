@@ -9,12 +9,13 @@ fake JCR repository::
 
     >>> import os.path
     >>> from nuxeo.jcr.db import DB
+    >>> from nuxeo.jcr.tests.fakeserver import FakeJCRController
     >>> nodetypedefs = file(os.path.join(testdir, 'test_basic.cnd')).read()
     >>> class FakeDB(DB):
     ...     server = None
     ...     _nodetypedefs = nodetypedefs # Read by FakeJCRController
-    >>> controller_class_name = 'nuxeo.jcr.tests.fakeserver.FakeJCRController'
-    >>> db = FakeDB(controller_class_name=controller_class_name)
+    ...     controller_class = FakeJCRController
+    >>> db = FakeDB()
 
 Then we open the database to get a connection::
 
