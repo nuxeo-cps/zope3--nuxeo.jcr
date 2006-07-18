@@ -16,6 +16,7 @@
 """Zope/JCR protocol
 """
 
+import re
 import errno
 import socket
 import sys
@@ -23,6 +24,8 @@ import traceback
 import os.path
 import logging
 import zope.interface
+import pytz
+import time
 from datetime import datetime
 
 from nuxeo.capsule.base import Blob
@@ -35,7 +38,8 @@ from nuxeo.jcr.interfaces import ConflictError
 DEBUG = False
 
 logger = logging.getLogger('nuxeo.jcr.controller')
-
+JCR_DATE_RE = re.compile(r'(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})'
+                         r'.(\d{3})(.*)')
 
 def unicodeName(name):
     try:
@@ -265,9 +269,22 @@ class JCRController(object):
         return float(line)
 
     def _readDate(self, line):
-        # D2006-04-07T18:00:42.754Z
-        # D2006-04-07T18:00:42.754+02:00
-        return datetime(2006, 01, 01) # XXX
+        m = JCR_DATE_RE.match(line)
+        if m is None:
+            raise ProtocolError("Cannot parse date %r" % line)
+        g = m.groups()
+        tz = g[7]
+        if tz == 'Z':
+            tzinfo = pytz.UTC
+        else: # +HH:MM
+            min = int(tz[1:3])*60+int(tz[4:6])
+            if tz[0] == '+':
+                min = -min
+            tzinfo = pytz.FixedOffset(-min)
+        d = datetime(int(g[0]), int(g[1]), int(g[2]),
+                     int(g[3]), int(g[4]), int(g[5]),
+                     int(g[6])*1000, tzinfo=tzinfo)
+        return d
 
     def _readBoolean(self, line):
         if line == 'false':
@@ -401,7 +418,20 @@ class JCRController(object):
         elif isinstance(value, float):
             self._writeline('f' + str(value))
         elif isinstance(value, datetime):
-            self._writeline('d' + value.isoformat()) # XXX without timezone
+            if value.tzinfo is None:
+                # Date in timezone-naive form
+                # Give it our local timezone
+                if time.localtime()[8]: # dst?
+                    tz = time.altzone
+                else:
+                    tz = time.timezone
+                tzinfo = pytz.FixedOffset(-tz/60)
+                value = value.replace(tzinfo=tzinfo)
+            v = value.isoformat()
+            if v[19] == '.':
+                # strip microseconds
+                v = v[:23] + v[26:]
+            self._writeline('d' + v)
         elif isinstance(value, Reference):
             self._writeline('r' + value.getTargetUUID())
         else:

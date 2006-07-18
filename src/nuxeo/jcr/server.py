@@ -495,8 +495,7 @@ class Processor:
         elif op == 'f':
             value = self.createValue(rest, javax.jcr.PropertyType.DOUBLE)
         elif op == 'd':
-            raise NotImplementedError
-            value = XXX
+            value = self.createValue(rest, javax.jcr.PropertyType.DATE)
         elif op == 'r':
             value = self.createValue(rest, javax.jcr.PropertyType.REFERENCE)
         else:
@@ -577,8 +576,9 @@ class Processor:
                     try:
                         node.setProperty(key, value)
                     except RepositoryException, e:
-                        return self.writeln("!Cannot set prop '%s' to '%s': %s"
-                                            % (key, value, e))
+                        # XXX happens when a date is set to ''
+                        print " XXX Ignoring setProperty '%s' to %s: %s" % (
+                            key, value, e)
             elif op == 'remove':
                 uuid = command['uuid']
                 if map.has_key(uuid):
