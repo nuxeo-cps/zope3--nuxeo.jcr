@@ -301,7 +301,7 @@ class JCRController(object):
         return line
 
     def _readReference(self, line):
-        return line
+        return Reference(line)
 
     _valueReaders = {
         's': _readString,
@@ -477,3 +477,21 @@ class JCRController(object):
         if line == '.':
             return
         raise ConflictError(line)
+
+    def checkin(self, uuid):
+        """See IJCRController.
+        """
+        self._writeline('i'+uuid)
+        line = self._readline()
+        if line == '.':
+            return
+        raise ProtocolError(line)
+
+    def checkout(self, uuid):
+        """See IJCRController.
+        """
+        self._writeline('o'+uuid)
+        line = self._readline()
+        if line == '.':
+            return
+        raise ProtocolError(line)

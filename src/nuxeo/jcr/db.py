@@ -23,6 +23,9 @@ from nuxeo.capsule.interfaces import IDocument
 from nuxeo.capsule.interfaces import IWorkspace
 from nuxeo.capsule.interfaces import IObjectBase
 from nuxeo.capsule.interfaces import IChildren # XXX IRoot
+from nuxeo.capsule.interfaces import IVersionHistory
+from nuxeo.capsule.interfaces import IVersion
+from nuxeo.capsule.interfaces import IFrozenNode
 import nuxeo.jcr.schema
 from nuxeo.jcr.impl import Children
 from nuxeo.jcr.impl import Document
@@ -31,6 +34,7 @@ from nuxeo.jcr.impl import ObjectProperty
 from nuxeo.jcr.impl import ListProperty
 from nuxeo.jcr.connection import Connection
 from nuxeo.jcr.controller import JCRController
+
 
 class DB(ZODBDB):
     """Capsule JCR DB
@@ -88,6 +92,9 @@ class DB(ZODBDB):
             sm.addSchema('IContainer', IContainer)
             sm.addSchema('ecmnt:children', IChildren)
             sm.addSchema('rep:root', IChildren) # XXX IRoot
+            sm.addSchema('nt:versionHistory', IVersionHistory)
+            sm.addSchema('nt:version', IVersion)
+            sm.addSchema('nt:frozenNode', IFrozenNode)
 
             # Set base classes
             sm.setClass('rep:root', Children) # XXX Workspace? Root?

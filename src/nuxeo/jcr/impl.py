@@ -364,7 +364,7 @@ class Document(ObjectBase, CapsuleDocument):
     def isCheckedOut(self):
         """See `nuxeo.capsule.interfaces.IDocument`
         """
-        return self._p_jar.isCheckedOut(self)
+        return bool(self.getProperty('jcr:isCheckedOut', True))
 
 
 class Workspace(Document, CapsuleWorkspace):

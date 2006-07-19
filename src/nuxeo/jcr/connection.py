@@ -792,6 +792,27 @@ class Connection(object):
 
 
     ##################################################
+    # Versioning
+
+    def checkin(self, obj):
+        assert obj._p_jar is self
+        self.savepoint()
+        oid = obj._p_oid
+        assert oid is not None
+        self.controller.checkin(oid)
+        # Some properties have been changed on the node, reload them
+        obj._p_deactivate()
+
+    def checkout(self, obj):
+        assert obj._p_jar is self
+        self.savepoint()
+        oid = obj._p_oid
+        assert oid is not None
+        self.controller.checkin(oid)
+        # Some properties have been changed on the node, reload them
+        obj._p_deactivate()
+
+    ##################################################
     # Save
 
     def savepoint(self):
@@ -799,7 +820,7 @@ class Connection(object):
 
         This operation is needed before a commit, or before any JCR
         operation that works on the persistently saved data, like
-        checkin, checkout, copy, move.
+        copy or move.
         """
         commands = self._saveCommands()
         map = self.controller.sendCommands(commands)

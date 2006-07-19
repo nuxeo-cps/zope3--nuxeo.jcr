@@ -60,6 +60,14 @@ class IJCRController(Interface):
         """Abort the current transaction, start a new one.
         """
 
+    def checkin(uuid):
+        """Checkin a node.
+        """
+
+    def checkout(uuid):
+        """Checkout a node.
+        """
+
     def getNodeTypeDefs():
         """Get the schemas of the node type definitions.
 

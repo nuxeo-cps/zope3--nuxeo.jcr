@@ -274,10 +274,17 @@ class Processor:
     def cmdStop(self, line=None):
         raise SystemExit
 
-    def cmdDump(self, line=None):
+    def cmdDump(self, uuid=None):
         if self.root is None:
             return self.writeln("!Not logged in.")
-        dumpNode(self.root, '', self.write)
+        if uuid is None:
+            node = self.root
+        else:
+            try:
+                node = self.session.getNodeByUUID(uuid)
+            except (ItemNotFoundException, IllegalArgumentException):
+                return self.writeln("!No such uuid '%s'" % uuid)
+        dumpNode(node, '', self.write)
         self.writeln('.')
 
     def cmdGetNodeTypeDefs(self, line):
@@ -618,13 +625,35 @@ class Processor:
         try:
             self.root.save()
         except RepositoryException, e:
-            return self.writeln("!Cannot save")
+            return self.writeln("!Cannot save: %s" % e)
 
         # Write token map
         for token, uuid in map.items():
             self.writeln('%s %s' % (token, uuid))
 
         # Done!
+        self.writeln('.')
+
+    def cmdCheckin(self, uuid):
+        try:
+            node = self.session.getNodeByUUID(uuid)
+        except (ItemNotFoundException, IllegalArgumentException):
+            return self.writeln("!No such uuid '%s'" % uuid)
+        try:
+            node.checkin()
+        except RepositoryException, e:
+            return self.writeln("!Cannot checkin: %s" % e)
+        self.writeln('.')
+
+    def cmdCheckout(self, uuid):
+        try:
+            node = self.session.getNodeByUUID(uuid)
+        except (ItemNotFoundException, IllegalArgumentException):
+            return self.writeln("!No such uuid '%s'" % uuid)
+        try:
+            node.checkout()
+        except RepositoryException, e:
+            return self.writeln("!Cannot checkout: %s" % e)
         self.writeln('.')
 
     _ops = {
@@ -636,6 +665,8 @@ class Processor:
         'p': (cmdPrepare, "Prepare the transaction."),
         'c': (cmdCommit, "Commit the prepared transaction."),
         'r': (cmdRollback, "Rollback the transaction."),
+        'i': (cmdCheckin, "Checkin."),
+        'o': (cmdCheckout, "Checkout."),
         'T': (cmdGetNodeType, "Get the primary type of a given uuid."),
         'S': (cmdGetNodeStates, "Get the state of the given uuids."),
         'P': (cmdGetNodeProperties, "Get some properties of a given uuid."),
