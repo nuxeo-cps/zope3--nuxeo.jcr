@@ -264,6 +264,11 @@ class NoChildrenYet(object):
         """
         return []
 
+    def keys(self):
+        """See `nuxeo.capsule.interfaces.IContainerBase`
+        """
+        return []
+
     def __iter__(self):
         """See `nuxeo.capsule.interfaces.IContainerBase`
         """
@@ -345,6 +350,21 @@ class Document(ObjectBase, CapsuleDocument):
 
         child = children.addChild(name, type_name)
         return child.__of__(self)
+
+    def checkout(self):
+        """See `nuxeo.capsule.interfaces.IDocument`
+        """
+        self._p_jar.checkout(self)
+
+    def checkin(self):
+        """See `nuxeo.capsule.interfaces.IDocument`
+        """
+        self._p_jar.checkin(self)
+
+    def isCheckedOut(self):
+        """See `nuxeo.capsule.interfaces.IDocument`
+        """
+        return self._p_jar.isCheckedOut(self)
 
 
 class Workspace(Document, CapsuleWorkspace):
