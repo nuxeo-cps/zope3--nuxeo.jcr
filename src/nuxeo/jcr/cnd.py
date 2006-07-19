@@ -800,7 +800,11 @@ class InterfaceMaker(object):
                     raise ValueError("Can't have more than one required type "
                                      "for [%s] + %s" % (type_name, nodename))
 
-                setitem = iface['__setitem__']
+                try:
+                    setitem = iface['__setitem__']
+                except KeyError:
+                    raise ValueError("Predefined interface %r must be "
+                                     "a container" % iface)
                 precondition = setitem.queryTaggedValue('precondition')
                 if precondition is None:
                     precondition = ItemTypePrecondition()
