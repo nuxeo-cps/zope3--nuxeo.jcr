@@ -561,8 +561,9 @@ class Processor:
                     try:
                         node.setProperty(key, value)
                     except RepositoryException, e:
-                        return self.writeln("!Cannot set prop '%s' to '%s': %s"
-                                            % (key, value, e))
+                        # XXX happens when a date is set to ''
+                        print " XXX Ignoring setProperty '%s' to %s: %s" % (
+                            key, value, e)
                 map[command['token']] = node.getUUID()
             elif op == 'modify':
                 uuid = command['uuid']
