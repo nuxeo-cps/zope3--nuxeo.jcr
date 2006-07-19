@@ -431,6 +431,9 @@ class JCRController(object):
             if v[19] == '.':
                 # strip microseconds
                 v = v[:23] + v[26:]
+            else:
+                # add 000 milliseconds
+                v = v[:19] + '.000' + v[19:]
             self._writeline('d' + v)
         elif isinstance(value, Reference):
             self._writeline('r' + value.getTargetUUID())
