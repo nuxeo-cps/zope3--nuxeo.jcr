@@ -322,7 +322,10 @@ class Processor:
             # Parent
             try:
                 parent_uuid = node.getParent().getUUID()
-            except ItemNotFoundException:
+            except (ItemNotFoundException,
+                    javax.jcr.UnsupportedRepositoryOperationException):
+                # Parent may not exist
+                # Parent may not be referenceable (rep:versionStorage)
                 pass
             else:
                 self.writeln('^%s' % parent_uuid)
@@ -495,7 +498,11 @@ class Processor:
         elif op == 'f':
             value = self.createValue(rest, javax.jcr.PropertyType.DOUBLE)
         elif op == 'd':
-            value = self.createValue(rest, javax.jcr.PropertyType.DATE)
+            try:
+                value = self.createValue(rest, javax.jcr.PropertyType.DATE)
+            except javax.jcr.ValueFormatException:
+                print 'XXX ValueFormatException on date %s' % repr(rest)
+                raise
         elif op == 'r':
             value = self.createValue(rest, javax.jcr.PropertyType.REFERENCE)
         else:
@@ -692,7 +699,7 @@ class IO:
         if self.bin is not None:
             n = self.channel.read(self.bin)
             if DEBUG:
-                print 'XXX < (%d bytes)' % n
+                print '< (%d bytes)' % n
             if n == -1:
                 # EOF
                 self.close()
@@ -714,7 +721,7 @@ class IO:
         self.rbbuf.clear()
         self.unprocessed.append(s)
         if DEBUG:
-            print 'XXX < %s' % repr(s)
+            print '< %s' % repr(s)
 
         # Pass all full lines/binaries to the processor
         # XXX Not completely memory efficient
@@ -774,7 +781,7 @@ class IO:
             raise
         n = self.channel.write(bbuf)
         if DEBUG:
-            print 'XXX - %s' % repr(data[:n])
+            print '- %s' % repr(data[:n])
         if n != l:
             #print 'short write! %d written out of %d' % (n, l)
             self.towrite = [data[n:]]
@@ -836,6 +843,7 @@ class Server:
                         except:
                             pass
                         print "XXX Trapped exception: %s" % e
+                        #raise
                 elif key.isWritable():
                     key.attachment().doWrite()
 
