@@ -31,6 +31,10 @@ from nuxeo.capsule.base import Workspace as CapsuleWorkspace
 from nuxeo.capsule.base import ListProperty as CapsuleListProperty
 from nuxeo.capsule.base import ObjectProperty as CapsuleObjectProperty
 
+from zope.event import notify
+from zope.app.container.contained import notifyContainerModified
+from zope.app.container.contained import ObjectAddedEvent
+from OFS.event import ObjectWillBeRemovedEvent
 
 logger = logging.getLogger('nuxeo.jcr.impl')
 
@@ -341,15 +345,24 @@ class Document(ObjectBase, CapsuleDocument):
         """See `nuxeo.capsule.interfaces.IDocument`
         """
         children = self._children
-
         # Are we creating the first child?
         if isinstance(children, NoChildrenYet):
             children = self._p_jar.createChild(self, 'ecm:children',
                                                'ecmnt:children')
             self.__dict__['_children'] = children # (avoid changing self)
-
         child = children.addChild(name, type_name)
-        return child.__of__(self)
+        child = child.__of__(self)
+        notify(ObjectAddedEvent(child, self, name))
+        notifyContainerModified(self)
+        return child
+
+    def removeChild(self, name):
+        """See `nuxeo.capsule.interfaces.IContainerBase`
+        """
+        child = self._children[name]
+        notify(ObjectWillBeRemovedEvent(child, self, name))
+        CapsuleDocument.removeChild(self, name)
+        notifyContainerModified(self)
 
     def checkout(self):
         """See `nuxeo.capsule.interfaces.IDocument`
