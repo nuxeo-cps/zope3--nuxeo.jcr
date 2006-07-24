@@ -24,7 +24,6 @@ import traceback
 import os.path
 import logging
 import zope.interface
-import pytz
 import time
 from datetime import datetime
 
@@ -274,16 +273,11 @@ class JCRController(object):
             raise ProtocolError("Cannot parse date %r" % line)
         g = m.groups()
         tz = g[7]
-        if tz == 'Z':
-            tzinfo = pytz.UTC
-        else: # +HH:MM
-            min = int(tz[1:3])*60+int(tz[4:6])
-            if tz[0] == '+':
-                min = -min
-            tzinfo = pytz.FixedOffset(-min)
+        if tz != 'Z':
+            logger.debug("Received date with non-UTC timezone: %s", line)
         d = datetime(int(g[0]), int(g[1]), int(g[2]),
                      int(g[3]), int(g[4]), int(g[5]),
-                     int(g[6])*1000, tzinfo=tzinfo)
+                     int(g[6])*1000) # XXX Timezone naive
         return d
 
     def _readBoolean(self, line):
@@ -418,22 +412,8 @@ class JCRController(object):
         elif isinstance(value, float):
             self._writeline('f' + str(value))
         elif isinstance(value, datetime):
-            if value.tzinfo is None:
-                # Date in timezone-naive form
-                # Give it our local timezone
-                if time.localtime()[8]: # dst?
-                    tz = time.altzone
-                else:
-                    tz = time.timezone
-                tzinfo = pytz.FixedOffset(-tz/60)
-                value = value.replace(tzinfo=tzinfo)
-            v = value.isoformat()
-            if v[19] == '.':
-                # strip microseconds
-                v = v[:23] + v[26:]
-            else:
-                # add 000 milliseconds
-                v = v[:19] + '.000' + v[19:]
+            v = value.strftime('%Y-%m-%dT%H:%M:%S.%%03dZ')
+            v = v % (value.microsecond / 1000)
             self._writeline('d' + v)
         elif isinstance(value, Reference):
             self._writeline('r' + value.getTargetUUID())
