@@ -275,10 +275,10 @@ class Processor:
     def cmdStop(self, line=None):
         raise SystemExit
 
-    def cmdDump(self, uuid=None):
+    def cmdDump(self, uuid):
         if self.root is None:
             return self.writeln("!Not logged in.")
-        if uuid is None:
+        if not uuid:
             node = self.root
         else:
             try:
