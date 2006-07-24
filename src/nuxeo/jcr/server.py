@@ -51,6 +51,7 @@ import java.nio
 import java.nio.charset
 import java.nio.channels
 from java.nio.channels import SelectionKey
+from java.lang import IllegalArgumentException
 
 import javax.jcr
 from javax.jcr import RepositoryException # toplevel exception
