@@ -394,6 +394,11 @@ class ListProperty(ContainerBase, ObjectBase, CapsuleListProperty):
         """
         CapsuleListProperty.__init__(self, name, schema)
 
+    def __setstate__(self, state):
+        super(ListProperty, self).__setstate__(state)
+        # Reinitialize ListProperty, to set _value_schema correctly.
+        self._init()
+
     def addValue(self, name=None):
         """Create one item for the list.
         """
