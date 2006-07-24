@@ -47,6 +47,7 @@ from nuxeo.capsule.interfaces import IListProperty
 from nuxeo.capsule.interfaces import ICapsuleField
 
 from nuxeo.jcr.impl import Document
+from nuxeo.jcr.impl import ObjectBase
 from nuxeo.jcr.impl import ContainerBase
 from nuxeo.jcr.impl import NoChildrenYet
 from nuxeo.jcr.impl import ObjectProperty
@@ -677,12 +678,8 @@ class Connection(object):
             # State was already loaded, needs to be set through a
             # setstate() call.
             state = self._pending_states.pop(oid)
-        elif issubclass(klass, Document): # or use interfaces?
-            state = self._loadObjectState(obj, oid, full_document=True)
-        elif issubclass(klass, ContainerBase):
-            state = self._loadContainerState(oid)
-        elif issubclass(klass, ObjectProperty):
-            state = self._loadObjectState(obj, oid)
+        elif issubclass(klass, (ObjectBase, ContainerBase)):
+            state = self._loadNodeState(obj, oid)
         else:
             raise ValueError("Unknown class %s.%s" %
                              (klass.__module__, klass.__name__))
@@ -691,14 +688,11 @@ class Connection(object):
         obj.__setstate__(state)
 
 
-    def _loadObjectState(self, obj, uuid, full_document=False):
+    def _loadNodeState(self, obj, uuid):
         """Load the state of a Node from the JCR.
 
-        This Node represents either an IObjectBase or a full document
-        with children (IDocument).
-
-        Property values are also loaded if they're cheap (no Binary).
-        (The decision is made by the server.)
+        The node may have Object aspects (holds properties), and
+        Container aspect (holds children).
         """
         states = self.controller.getNodeStates([uuid])
         name, parent_uuid, jcrchildren, properties, deferred = states[uuid]
@@ -721,7 +715,7 @@ class Connection(object):
                 # don't put jcr:primaryType in properties
             else:
                 prop_map[prop_name] = prop_value
-                if full_document:
+                if isinstance(obj, Document):
                     # Magic properties to map security
                     func = obj.__setattr_special_properties__.get(prop_name)
                     if func is not None:
@@ -730,15 +724,31 @@ class Connection(object):
         schema = self._db.getSchema(type_name)
 
         # JCR children
-        children = None
-        for child_name, child_uuid, child_type in jcrchildren:
-            child = self.get(child_uuid, node_type=child_type)
-            if child_name == 'ecm:children':
-                if full_document:
+        if isinstance(obj, ContainerBase):
+            # Children node are put in _children
+            children = {}
+            order = [] # XXX check if type is ordered in its schema
+            for child_name, child_uuid, child_type in jcrchildren:
+                if child_type == 'nt:unstructured': # XXX skip debug stuff
+                    continue
+                child = self.get(child_uuid, node_type=child_type)
+                children[child_name] = child
+                order.append(child_name)
+        else:
+            # Children node are complex properties except ecm:children
+            children = None
+            order = None
+            for child_name, child_uuid, child_type in jcrchildren:
+                child = self.get(child_uuid, node_type=child_type)
+                if child_name == 'ecm:children':
                     children = child
-            else:
-                # Complex property
-                prop_map[child_name] = child
+                else:
+                    # Complex property
+                    prop_map[child_name] = child
+            if children is None:
+                this = self._getFromCache(uuid)
+                assert this is not None, ("Object not in cache", uuid)
+                children = NoChildrenYet(this)
 
         # State
         state.update({
@@ -746,50 +756,11 @@ class Connection(object):
             '__parent__': parent,
             '_schema': schema,
             '_props': prop_map,
-            })
-        if full_document:
-            if children is None:
-                this = self._getFromCache(uuid)
-                assert this is not None, ("Object not in cache", uuid)
-                children = NoChildrenYet(this)
-            state['_children'] = children
-
-        return state
-
-    def _loadContainerState(self, uuid):
-        """Load the state for a JCR Node which is a container
-        (Children or ListProperty)
-        """
-        states = self.controller.getNodeStates([uuid])
-        name, parent_uuid, jcrchildren, properties, deferred = states[uuid]
-        assert deferred == [], deferred # XXX for now
-
-        # Parent
-        if parent_uuid is not None:
-            parent = self.get(parent_uuid)
-        else:
-            parent = None
-
-        # JCR Children
-        child_map = {}
-        order = [] # XXX check if type is ordered in its schema
-        for child_name, child_uuid, child_type in jcrchildren:
-            if child_type == 'nt:unstructured': # XXX skip debug stuff
-                continue
-            child = self.get(child_uuid, node_type=child_type)
-            child_map[child_name] = child
-            order.append(child_name)
-        # XXX _lazy, _missing
-
-        # State
-        state = {
-            '__name__': name,
-            '__parent__': parent,
-            '_children': child_map,
+            '_children': children,
             '_order': order,
-            }
-        return state
+            })
 
+        return state
 
     ##################################################
     # Versioning
@@ -800,7 +771,12 @@ class Connection(object):
         oid = obj._p_oid
         assert oid is not None
         self.controller.checkin(oid)
-        # Some properties have been changed on the node, reload them
+        # Deactivate the version history, its children have changed
+        vhuuid = obj.getProperty('jcr:versionHistory').getTargetUUID()
+        vh = self._cache.get(vhuuid)
+        if vh is not None:
+            vh._p_deactivate()
+        # Deactivate the node, some properties have changed
         obj._p_deactivate()
 
     def checkout(self, obj):
@@ -809,7 +785,7 @@ class Connection(object):
         oid = obj._p_oid
         assert oid is not None
         self.controller.checkout(oid)
-        # Some properties have been changed on the node, reload them
+        # Deactivate the node, some properties have changed
         obj._p_deactivate()
 
     ##################################################
@@ -822,6 +798,8 @@ class Connection(object):
         operation that works on the persistently saved data, like
         copy or move.
         """
+        self._maybeJoin()
+
         commands = self._saveCommands()
         map = self.controller.sendCommands(commands)
 
