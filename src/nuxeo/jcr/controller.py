@@ -393,7 +393,7 @@ class JCRController(object):
         # key is passed for error logging purposes
         if isinstance(value, str):
             # XXX should be unicode!
-            logger.error("Property %r has non-unicode value %r", key, value)
+            logger.warning("Property %r has non-unicode value %r", key, value)
             value = unicode(value, 'utf-8')
 
         if isinstance(value, unicode):
