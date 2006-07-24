@@ -418,7 +418,7 @@ class JCRController(object):
         elif isinstance(value, Reference):
             self._writeline('r' + value.getTargetUUID())
         else:
-            raise TypeError("Illegal value %s of type %s for %r" %
+            raise TypeError("Illegal value %r of type %s for %r" %
                             (value, type(value), key))
 
     def getNodeProperties(self, uuid, names):
