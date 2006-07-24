@@ -520,6 +520,7 @@ class InterfaceMaker(object):
         if predefined is None:
             predefined = {}
         self._predefined = predefined
+        self._interfaces.update(predefined)
         if input is not None:
             self.addData(input)
 
