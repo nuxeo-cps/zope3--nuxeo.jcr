@@ -389,11 +389,20 @@ class ListProperty(ContainerBase, ObjectBase, CapsuleListProperty):
     """JCR-specific list property.
     """
 
-    def addValue(self):
+    def __init__(self, name, schema):
+        """Init as a list
+        """
+        CapsuleListProperty.__init__(self, name, schema)
+
+    def addValue(self, name=None):
         """Create one item for the list.
         """
+        # XXX AT: name is useful when storing dict-like structure as a list.
         item = self._p_jar.newValue(self)
-        name = item.getName()
+        if name is None:
+            name = item.getName()
+        else:
+            item.__name__ = name
         self._children[name] = item
         if self._order is not None:
             self._order.append(name)
