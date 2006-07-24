@@ -359,7 +359,7 @@ class Document(ObjectBase, CapsuleDocument):
     def removeChild(self, name):
         """See `nuxeo.capsule.interfaces.IContainerBase`
         """
-        child = self._children[name]
+        child = self.getChild(name).__of__(self)
         notify(ObjectWillBeRemovedEvent(child, self, name))
         CapsuleDocument.removeChild(self, name)
         notifyContainerModified(self)
