@@ -808,7 +808,7 @@ class Connection(object):
         self.savepoint()
         oid = obj._p_oid
         assert oid is not None
-        self.controller.checkin(oid)
+        self.controller.checkout(oid)
         # Some properties have been changed on the node, reload them
         obj._p_deactivate()
 
