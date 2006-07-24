@@ -771,13 +771,14 @@ class Connection(object):
         oid = obj._p_oid
         assert oid is not None
         self.controller.checkin(oid)
+        # Deactivate the node, some properties have changed
+        obj._p_deactivate()
         # Deactivate the version history, its children have changed
+        # (this refetches obj as a side effect)
         vhuuid = obj.getProperty('jcr:versionHistory').getTargetUUID()
         vh = self._cache.get(vhuuid)
         if vh is not None:
             vh._p_deactivate()
-        # Deactivate the node, some properties have changed
-        obj._p_deactivate()
 
     def checkout(self, obj):
         assert obj._p_jar is self
