@@ -193,6 +193,9 @@ class ContainerBase(CapsuleContainerBase):
         self._children[name] = child
         if self._order is not None:
             self._order.append(name)
+        # Save and refetch to update JCR system properties (versioning)
+        self._p_jar.savepoint()
+        child._p_deactivate()
         return child
 
     def removeChild(self, name):
