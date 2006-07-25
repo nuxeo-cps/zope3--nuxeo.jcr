@@ -84,7 +84,22 @@ CHARSET = java.nio.charset.Charset.forName('ISO-8859-1')
 latinDecoder = CHARSET.newDecoder()
 latinEncoder = CHARSET.newEncoder()
 
+# Used to hold binary data string on output
+BYTEARRAY = java.nio.ByteBuffer.allocate(16384).array()
 
+
+def dumpValueToString(value):
+    if value.getType() != javax.jcr.PropertyType.BINARY:
+        return value.getString()
+    stream = value.getStream()
+    # Small capacity buffer
+    array = java.nio.ByteBuffer.allocate(100).array()
+    n = stream.read(array)
+    s = str(java.lang.String(array, 0, n, 'ISO-8859-1'))
+    s = repr(s)
+    if stream.available():
+        s += '...'
+    return s
 
 def dumpNode(node, spaces, output):
     name = node.getName()
@@ -99,9 +114,9 @@ def dumpNode(node, spaces, output):
         if name == 'jcr:primaryType':
            continue
         try:
-            s = p.getString()
+            s = dumpValueToString(p.getValue())
         except javax.jcr.ValueFormatException:
-            s = str([v.getString() for v in p.getValues()])
+            s = str([dumpValueToString(v) for v in p.getValues()])
         output(spaces + "prop %s %s\n" % (name, s))
     for n in node.getNodes():
         dumpNode(n, spaces, output)
@@ -370,7 +385,14 @@ class Processor:
         self.writeln('s%d' % len(s))
         self.writeln(s)
     def dumpBinary(self, value):
-        s = value.getString()
+        # Not very memory efficient, should stream the bytes
+        stream = value.getStream() # InputStream
+        ss = []
+        while stream.available():
+            n = stream.read(BYTEARRAY)
+            s = str(java.lang.String(BYTEARRAY, 0, n, 'ISO-8859-1'))
+            ss.append(s)
+        s = ''.join(ss)
         self.writeln('x%d' % len(s))
         self.writeln(s)
     def dumpLong(self, value):
