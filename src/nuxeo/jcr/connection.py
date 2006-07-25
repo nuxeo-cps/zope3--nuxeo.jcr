@@ -284,7 +284,7 @@ class Connection(object):
                 old = obj._props[name]
                 del obj._props[name]
                 if IProperty.providedBy(old):
-                    raise NotImplementedError
+                    self.deleteNode(old)
                 else:
                     self._prop_changed(obj, name)
         else:
