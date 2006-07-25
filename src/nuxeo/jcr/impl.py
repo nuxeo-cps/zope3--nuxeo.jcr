@@ -402,6 +402,9 @@ class ListProperty(ContainerBase, ObjectBase, CapsuleListProperty):
         # Reinitialize ListProperty, to set _value_schema correctly.
         self._init()
 
+    def _setValueSchema(self, schema):
+        self.__dict__['_value_schema'] = schema
+
     def addValue(self, name=None):
         """Create one item for the list.
         """
