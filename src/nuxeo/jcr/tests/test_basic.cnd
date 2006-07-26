@@ -11,13 +11,6 @@
 <ecmst='http://nuxeo.org/ecm/jcr/schemas'>
 <dc='http://purl.org/dc/elements/1.1/'>
 
-//// bootstrap
-
-//[nt:base]
-//[mix:versionable]
-[rep:root]
-
-
 //// bases
 
 // base of all our non-mixin JCR types
@@ -30,8 +23,12 @@
 [ecmnt:document] > ecmnt:schema, mix:versionable
 
 // children nodes
-[ecmnt:children] > ecmnt:base
+[ecmnt:children] > ecmnt:schema
+  + * (ecmnt:document)
 
+// folderish document base
+[ecmnt:folder] > ecmnt:document
+  + ecm:children (ecmnt:children)
 
 //// standard schemas
 

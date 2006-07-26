@@ -26,19 +26,36 @@ Then we open the database to get a connection::
     >>> root_uuid
     'cafe-babe'
 
-Let's see what types and schemas are available, and check their classes::
+Let's see what types and schemas are available::
 
     >>> sm = conn.getSchemaManager()
     >>> sorted(sm.getSchemas().keys())
     ... #doctest: +NORMALIZE_WHITESPACE
-    ['IContainer', 'ecmnt:children', 'ecmnt:document', 'ecmnt:schema',
+    ['IContainer', 'ecmnt:children', 'ecmnt:document',
+     'ecmnt:folder', 'ecmnt:schema',
      'ecmst:dublincore',
      'ecmst:name', 'ecmst:names',
      'ecmst:place', 'ecmst:places',
      'ecmst:security',
      'ecmst:tripreport',
+     'nt:frozenNode', 'nt:version', 'nt:versionHistory',
      'rep:root',
      'tripreport']
+
+Set base classes (could be done through ZCML)::
+
+    >>> from nuxeo.jcr.impl import Document
+    >>> from nuxeo.jcr.impl import ObjectProperty
+    >>> from nuxeo.jcr.impl import Children
+    >>> from nuxeo.jcr.impl import ListProperty
+
+    >>> sm.setClass('ecmnt:document', Document)
+    >>> sm.setClass('ecmnt:schema', ObjectProperty)
+    >>> sm.setClass('ecmnt:children', Children)
+    >>> sm.setClass('IContainer', ListProperty)
+
+Check derived classes::
+
     >>> sm.getClass('ecmst:name')
     <class 'nuxeo.jcr.impl.ObjectProperty'>
     >>> sm.getClass('ecmst:dublincore')
@@ -50,22 +67,18 @@ Ask the connection for the root::
 
     >>> root = conn.get(root_uuid)
     >>> root
-    <Workspace at />
+    <Children at >
     >>> root._p_oid is root_uuid
-    True
-    >>> root.getUUID() is root_uuid
     True
 
 Add a basic object to the root::
 
     >>> from Acquisition import aq_base
-    >>> root._children
-    <NoChildrenYet at /ecm:children>
     >>> trip = root.addChild('atrip', 'tripreport')
+    >>> trip._p_oid # no temporary oid seen
+    'cafe-0001'
     >>> root._children
-    <Children at /ecm:children>
-    >>> root._children._p_oid
-    'T1'
+    {'atrip': <Document at /atrip>}
     >>> root['atrip']
     <Document at /atrip>
     >>> aq_base(trip) is root['atrip']
@@ -74,11 +87,7 @@ Add a basic object to the root::
     >>> trip.setProperty('name', {'first': u"Jack", 'last': u"Bauer"})
     >>> trip.setProperty('friends', [{'first': u"Chloe", 'last': u"O'Brian"},
     ...                              {'first': u"David", 'last': u"Palmer"}])
-    >>> trip._p_oid # temporary oid
-    'T2'
     >>> tm.commit()
-    >>> trip._p_oid
-    'cafe-0002'
     >>> trip._p_deactivate()
 
 There is a child 'atrip', which is a ghost initially::
@@ -120,6 +129,17 @@ There is also a list property of friends::
     >>> sorted(friends[1].getProperties().items())
     [('first', u'David'), ('last', u'Palmer')]
 
+We can also create a container, that will have no children initially::
+
+    >>> cont = root.addChild('acont', 'ecmnt:folder')
+    >>> cont
+    <Document at /acont>
+    >>> cont._children
+    <NoChildrenYet at /acont/ecm:children>
+    >>> foo = cont.addChild('ba', 'tripreport')
+    >>> cont._children
+    <Children at /acont/ecm:children>
+
 We'll check that everything gets reloaded correctly from the storage if
 the persistent objects are ghostified (by the pickle cache being
 reduced, or by direct invalidation).
@@ -146,8 +166,8 @@ An object property inside a list::
 
 The "children" special node::
 
-    >>> root._children._p_deactivate()
-    >>> root._children._p_activate()
+    >>> cont._children._p_deactivate()
+    >>> cont._children._p_activate()
 
 Modification
 ------------
@@ -255,7 +275,7 @@ An abort after removal is correctly rolled back::
     >>> [c.getName() for c in root.getChildren()]
     ['atrip', 'foo']
     >>> tm.abort()
-    >>> root._children._p_changed is None
+    >>> root._p_changed is None
     True
     >>> [c.getName() for c in root.getChildren()]
     ['atrip']
@@ -339,13 +359,13 @@ Zope 2 local roles attributes are mapped to a `ecm:localroles` property::
     >>> trip.__ac_local_roles__ == {'bob': ['Foo', 'Bar'], 'pete': ['Lol']}
     True
     >>> trip.getProperty('ecm:localroles')
-    'user:bob=Bar,Foo;user:pete=Lol'
+    u'user:bob=Bar,Foo;user:pete=Lol'
     >>> trip.__ac_local_group_roles__ = {'cool': ['Mdr']}
     >>> trip.getProperty('ecm:localroles')
-    'group:cool=Mdr;user:bob=Bar,Foo;user:pete=Lol'
+    u'group:cool=Mdr;user:bob=Bar,Foo;user:pete=Lol'
     >>> trip.__ac_local_roles__ = None
     >>> trip.getProperty('ecm:localroles')
-    'group:cool=Mdr'
+    u'group:cool=Mdr'
     >>> trip.__ac_local_group_roles__ = None
     >>> trip.getProperty('ecm:localroles', 'none')
     'none'
@@ -362,7 +382,7 @@ Now reload from storage::
     >>> trip.__ac_local_roles__
     {'bob': ['Foo']}
     >>> trip.getProperty('ecm:localroles')
-    'user:bob=Foo'
+    u'user:bob=Foo'
     >>> del trip.__ac_local_roles__
     >>> trip.getProperty('ecm:localroles', 'none')
     'none'
@@ -383,7 +403,7 @@ Zope security is mapped to a `ecm:security` attribute::
     >>> trip._p_changed
     True
     >>> trip.getProperty('ecm:security')
-    'Modify+=Baz;View=Bar,Foo'
+    u'Modify+=Baz;View=Bar,Foo'
     >>> trip.setProperty('ecm:security', 'View+=Bar')
     >>> trip._View_Permission
     ['Bar']

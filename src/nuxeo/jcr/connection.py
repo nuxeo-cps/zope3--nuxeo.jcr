@@ -718,7 +718,7 @@ class Connection(object):
                 prop_map[prop_name] = prop_value
                 if isinstance(obj, Document):
                     # Magic properties to map security
-                    func = obj.__setattr_special_properties__.get(prop_name)
+                    func = obj.__class__._setattr_special_properties.get(prop_name)
                     if func is not None:
                         func(obj, prop_value, state)
 

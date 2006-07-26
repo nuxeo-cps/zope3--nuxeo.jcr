@@ -53,7 +53,7 @@ class ObjectBase(CapsuleObjectBase):
         self._p_jar.setProperty(self, name, value)
 
         # Special properties
-        func = self.__setattr_special_properties__.get(name)
+        func = self.__class__._setattr_special_properties.get(name)
         if func is not None:
             func(self, value, self.__dict__)
 
@@ -135,12 +135,12 @@ class ObjectBase(CapsuleObjectBase):
         except ValueError:
             raise ValueError("Illegal string %r for ecm:security" % value)
 
-    __setattr_special_attributes__ = {
+    _setattr_special_attributes = {
         '__ac_local_roles__': _map_localroles_to_prop,
         '__ac_local_group_roles__': _map_localroles_to_prop,
         }
 
-    __setattr_special_properties__ = {
+    _setattr_special_properties = {
         'ecm:localroles': _map_prop_to_localroles,
         'ecm:security': _map_prop_to_security,
         }
@@ -148,11 +148,11 @@ class ObjectBase(CapsuleObjectBase):
     def __setattr__(self, name, value):
         """Transform special value into properties.
         """
-        func = self.__setattr_special_attributes__.get(name)
+        func = self.__class__._setattr_special_attributes.get(name)
         if (func is None
             and name.startswith('_')
             and name.endswith('_Permission')):
-            func = self._map_security_to_prop.im_func
+            func = self.__class__._map_security_to_prop.im_func
         if func is not None:
             self.__dict__[name] = value
             k, v = func(self)
@@ -168,11 +168,11 @@ class ObjectBase(CapsuleObjectBase):
             super(ObjectBase, self).__setattr__(name, value)
 
     def __delattr__(self, name):
-        func = self.__setattr_special_attributes__.get(name)
+        func = self.__class__._setattr_special_attributes.get(name)
         if (func is None
             and name.startswith('_')
             and name.endswith('_Permission')):
-            func = self._map_security_to_prop.im_func
+            func = self.__class__._map_security_to_prop.im_func
         if func is not None:
             del self.__dict__[name]
             k, v = func(self)
@@ -260,6 +260,11 @@ class NoChildrenYet(object):
         if default is not _MARKER:
             return default
         raise KeyError(name)
+
+    def __setitem__(self, name, value):
+        """See `nuxeo.capsule.interfaces.IContainerBase`
+        """
+        raise NotImplementedError
 
     def __getitem__(self, name):
         """See `nuxeo.capsule.interfaces.IContainerBase`
