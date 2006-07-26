@@ -135,3 +135,19 @@ class IJCRController(Interface):
         The pending events are sent asynchronously by the server and
         accumulated until read by this method.
         """
+
+    def getPath(uuid):
+        """Get the path of a given UUID.
+
+        Returns the path or None.
+
+        The path is relative to the JCR workspace root.
+        """
+
+    def searchProperty(prop_name, value):
+        """Search the JCR for nodes where prop_name = 'value'.
+
+        Returns a sequence of (uuid, path).
+
+        The paths are relative to the JCR workspace root.
+        """

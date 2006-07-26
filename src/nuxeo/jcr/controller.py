@@ -475,3 +475,28 @@ class JCRController(object):
         if line == '.':
             return
         raise ProtocolError(line)
+
+    def getPath(self, uuid):
+        """See IJCRController.
+        """
+        self._writeline('/'+uuid)
+        line = self._readline()
+        if line.startswith('!'):
+            return None
+        return unicode(line, 'utf-8')
+
+    def searchProperty(self, prop_name, value):
+        """See IJCRController.
+        """
+        self._writeline('s%s %s' % (prop_name, value.encode('utf-8')))
+        res = []
+        while True:
+            line = self._readline()
+            if line == '.':
+                break
+            if line.startswith('!'):
+                raise ProtocolError(line)
+            uuid, path = line.split(' ', 1)
+            path = unicode(path, 'utf-8')
+            res.append((uuid, path))
+        return res

@@ -679,6 +679,32 @@ class Processor:
             return self.writeln("!Cannot checkout: %s" % e)
         self.writeln('.')
 
+    def cmdPath(self, uuid):
+        try:
+            node = self.session.getNodeByUUID(uuid)
+        except (ItemNotFoundException, IllegalArgumentException):
+            return self.writeln("!No such uuid '%s'" % uuid)
+        path = node.getPath().encode('utf-8')
+        self.writeln(path)
+
+    def cmdSearch(self, line):
+        prop_name, value = line.split(' ', 1)
+        qm = self.session.getWorkspace().getQueryManager()
+        query = "//*[@%s='%s']" % (prop_name, unicode(value, 'utf-8'))
+        nit = qm.createQuery(query, 'xpath').execute().getNodes()
+        res = []
+        while nit.hasNext():
+            node = nit.nextNode()
+            try:
+                uuid = node.getUUID()
+            except javax.jcr.UnsupportedRepositoryOperationException:
+                print "XXX %s is not referenceable" % node.getPath()
+                continue
+            res.append((uuid, node.getPath()))
+        for uuid, path in res:
+            self.writeln('u%s %s' % (uuid, path.encode('utf-8')))
+        self.writeln('.')
+
     _ops = {
         '?': (cmdHelp, "This help."),
         'q': (cmdQuit, "Quit this connection."),
@@ -695,6 +721,8 @@ class Processor:
         'P': (cmdGetNodeProperties, "Get some properties of a given uuid."),
         'D': (cmdGetNodeTypeDefs, "Get the CND node type definitions."),
         'M': (cmdMultiple, "Send multiple commands (+/=/-/%)."),
+        '/': (cmdPath, "Get the path of a UUID."),
+        's': (cmdSearch, "Search a property = value."),
         }
 
 

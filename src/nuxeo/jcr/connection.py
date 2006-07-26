@@ -764,6 +764,40 @@ class Connection(object):
         return state
 
     ##################################################
+    # Search
+
+    def locateUUID(self, uuid):
+        """Get the path of a doc with a given UUID.
+
+        The path is relative to JCR workspace root and translated
+        to remove 'ecm:children' components.
+        """
+        path = self.controller.getPath(uuid)
+        if path is None:
+            return None
+        path = path.replace('/ecm:children/', '/')
+        if path[0] != '/':
+            raise ValueError(path)
+        return path[1:]
+
+    def searchProperty(self, prop_name, value):
+        """Search the JCR for nodes where prop_name = 'value'.
+
+        Returns a sequence of (uuid, path).
+
+        The paths are relative to JCR workspace root and translated
+        to remove 'ecm:children' components.
+        """
+        results = self.controller.searchProperty(prop_name, value)
+        res = []
+        for uuid, path in results:
+            path = path.replace('/ecm:children/', '/')
+            if path[0] != '/':
+                raise ValueError(path)
+            res.append((uuid, path[1:]))
+        return res
+
+    ##################################################
     # Versioning
 
     def checkin(self, obj):

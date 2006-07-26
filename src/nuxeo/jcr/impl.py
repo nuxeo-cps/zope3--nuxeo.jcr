@@ -382,6 +382,20 @@ class Document(ObjectBase, CapsuleDocument):
         """
         return bool(self.getProperty('jcr:isCheckedOut', True))
 
+    def locateUUID(self, uuid):
+        """See `nuxeo.capsule.interfaces.IDocument`
+        """
+        return self._p_jar.locateUUID(uuid)
+
+    def searchProperty(self, prop_name, value):
+        """See `nuxeo.capsule.interfaces.IDocument`
+        """
+        if prop_name not in (
+            'ecm:versionHistory',
+            ):
+            raise ValueError(prop_name)
+        return self._p_jar.searchProperty(prop_name, value)
+
 
 class Workspace(Document, CapsuleWorkspace):
     """JCR Workspace
