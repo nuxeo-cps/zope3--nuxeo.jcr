@@ -286,6 +286,9 @@ class FakeJCRController(object):
     def checkout(self, uuid):
         raise NotImplementedError
 
+    def restore(self, uuid, versionName=''):
+        raise NotImplementedError
+
     def newUUID(self):
         return self.real_storage.newUUID()
 

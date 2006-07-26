@@ -679,6 +679,21 @@ class Processor:
             return self.writeln("!Cannot checkout: %s" % e)
         self.writeln('.')
 
+    def cmdRestore(self, line):
+        uuid, versionName = line.split(' ')
+        try:
+            node = self.session.getNodeByUUID(uuid)
+        except (ItemNotFoundException, IllegalArgumentException):
+            return self.writeln("!No such uuid '%s'" % uuid)
+        try:
+            if versionName:
+                node.restore(versionName, True)
+            else:
+                node.restore(node.getBaseVersion(), True)
+        except RepositoryException, e:
+            return self.writeln("!Cannot restore: %s" % e)
+        self.writeln('.')
+
     def cmdPath(self, uuid):
         try:
             node = self.session.getNodeByUUID(uuid)
@@ -716,6 +731,7 @@ class Processor:
         'r': (cmdRollback, "Rollback the transaction."),
         'i': (cmdCheckin, "Checkin."),
         'o': (cmdCheckout, "Checkout."),
+        't': (cmdRestore, "Restore."),
         'T': (cmdGetNodeType, "Get the primary type of a given uuid."),
         'S': (cmdGetNodeStates, "Get the state of the given uuids."),
         'P': (cmdGetNodeProperties, "Get some properties of a given uuid."),
@@ -1037,5 +1053,3 @@ if __name__ == '__main__':
     port = int(sys.argv[2])
     cndpaths = sys.argv[3:]
     run_server(repoconf, repopath, cndpaths, port)
-
-

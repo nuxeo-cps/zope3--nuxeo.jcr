@@ -68,6 +68,10 @@ class IJCRController(Interface):
         """Checkout a node.
         """
 
+    def restore(uuid, versionName=''):
+        """Restore a node.
+        """
+
     def getNodeTypeDefs():
         """Get the schemas of the node type definitions.
 

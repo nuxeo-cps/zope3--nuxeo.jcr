@@ -372,6 +372,11 @@ class Document(ObjectBase, CapsuleDocument):
         CapsuleDocument.removeChild(self, name)
         notifyContainerModified(self)
 
+    def restore(self, versionName=''):
+        """See `nuxeo.capsule.interfaces.IDocument`
+        """
+        self._p_jar.restore(self, versionName)
+
     def checkout(self):
         """See `nuxeo.capsule.interfaces.IDocument`
         """

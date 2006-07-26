@@ -824,6 +824,16 @@ class Connection(object):
         # Deactivate the node, some properties have changed
         obj._p_deactivate()
 
+    def restore(self, obj, versionName):
+        assert obj._p_jar is self
+        self.savepoint()
+        oid = obj._p_oid
+        assert oid is not None
+        self.controller.restore(oid, versionName)
+        # Deactivate the node, some properties have changed
+        obj._p_deactivate()
+
+
     ##################################################
     # Save
 
@@ -946,4 +956,3 @@ def findInserts(old, new):
                 old.insert(i, name)
                 break
     return inserts
-

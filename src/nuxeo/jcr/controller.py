@@ -476,6 +476,15 @@ class JCRController(object):
             return
         raise ProtocolError(line)
 
+    def restore(self, uuid, versionName=''):
+        """See IJCRController.
+        """
+        self._writeline('t'+uuid+' '+versionName)
+        line = self._readline()
+        if line == '.':
+            return
+        raise ProtocolError(line)
+
     def getPath(self, uuid):
         """See IJCRController.
         """
