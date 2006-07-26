@@ -270,7 +270,7 @@ class ProtocolTest(unittest.TestCase):
             'Pablob', 'x6', 'expos\xe9',
             'Paint', 'l123',
             'Pafloat', 'f3.14',
-            'Padate', 'd2006-04-07T18:00:42.754000',
+            'Padate', 'd2006-04-07T18:00:42.754Z',
             'Pabool', 'btrue',
             'Paref', 'rdead-beef',
             'Mmultstr',
