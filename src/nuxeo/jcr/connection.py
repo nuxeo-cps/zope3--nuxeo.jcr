@@ -323,7 +323,7 @@ class Connection(object):
                     obj._props[name] = value
                     self._prop_changed(obj, name)
 
-    def newValue(self, obj):
+    def newValue(self, obj, name=None):
         """Create a new item for a ListProperty.
         """
         assert IListProperty.providedBy(obj)
@@ -331,7 +331,8 @@ class Connection(object):
         oid = obj._p_oid
         assert oid is not None
 
-        name = str(randrange(0, 2<<30)) # XXX better random id?
+        if name is None:
+            name = str(randrange(0, 2<<30)) # XXX better random id?
         schema = obj.getValueSchema()
         return self._addNode(obj, name, schema)
 

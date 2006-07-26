@@ -409,11 +409,8 @@ class ListProperty(ContainerBase, ObjectBase, CapsuleListProperty):
         """Create one item for the list.
         """
         # XXX AT: name is useful when storing dict-like structure as a list.
-        item = self._p_jar.newValue(self)
-        if name is None:
-            name = item.getName()
-        else:
-            item.__name__ = name
+        item = self._p_jar.newValue(self, name=name)
+        name = item.getName()
         self._children[name] = item
         if self._order is not None:
             self._order.append(name)
