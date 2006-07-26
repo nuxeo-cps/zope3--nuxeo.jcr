@@ -280,6 +280,12 @@ class FakeJCRController(object):
     def abort(self):
         self._begin()
 
+    def checkin(self, uuid):
+        raise NotImplementedError
+
+    def checkout(self, uuid):
+        raise NotImplementedError
+
     def newUUID(self):
         return self.real_storage.newUUID()
 
@@ -343,3 +349,9 @@ class FakeJCRController(object):
 
     def getPendingEvents(self):
         raise NotImplementedError('Unused')
+
+    def getPath(self, uuid):
+        raise NotImplementedError
+
+    def searchProperty(self, prop_name, value):
+        raise NotImplementedError
