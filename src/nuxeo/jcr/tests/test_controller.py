@@ -195,7 +195,7 @@ class ProtocolTest(unittest.TestCase):
             (u'date2', 'XXX'),
             (u'aname', 'dc:title'),
             (u'apath', '/foo/bar:baz'),
-            (u'aref', 'abc-def-ghijk'),
+            (u'aref', Reference('abc-def-ghijk')),
             (u'empty', []),
             (u'multstr', ['abcde', '12345678']),
             ]
@@ -211,6 +211,10 @@ class ProtocolTest(unittest.TestCase):
             if isinstance(value, Blob):
                 self.assertEqual(type(value), type(v))
                 self.assertEqual(value.data, v.data)
+                continue
+            if isinstance(value, Reference):
+                self.assertEqual(type(value), type(v))
+                self.assertEqual(value.getTargetUUID(), v.getTargetUUID())
                 continue
             if key.startswith('date'):
                 continue # XXX
