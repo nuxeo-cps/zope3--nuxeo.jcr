@@ -800,12 +800,12 @@ class Connection(object):
     ##################################################
     # Versioning
 
-    def checkin(self, obj):
+    def checkpoint(self, obj):
         assert obj._p_jar is self
         self.savepoint()
         oid = obj._p_oid
         assert oid is not None
-        self.controller.checkin(oid)
+        self.controller.checkpoint(oid)
         # Deactivate the node, some properties have changed
         obj._p_deactivate()
         # Deactivate the version history, its children have changed
@@ -814,15 +814,6 @@ class Connection(object):
         vh = self._cache.get(vhuuid)
         if vh is not None:
             vh._p_deactivate()
-
-    def checkout(self, obj):
-        assert obj._p_jar is self
-        self.savepoint()
-        oid = obj._p_oid
-        assert oid is not None
-        self.controller.checkout(oid)
-        # Deactivate the node, some properties have changed
-        obj._p_deactivate()
 
     def restore(self, obj, versionName):
         assert obj._p_jar is self

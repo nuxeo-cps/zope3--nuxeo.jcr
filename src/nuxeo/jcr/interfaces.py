@@ -60,12 +60,8 @@ class IJCRController(Interface):
         """Abort the current transaction, start a new one.
         """
 
-    def checkin(uuid):
-        """Checkin a node.
-        """
-
-    def checkout(uuid):
-        """Checkout a node.
+    def checkpoint(uuid):
+        """Checkpoint: checkin and checkout
         """
 
     def restore(uuid, versionName=''):

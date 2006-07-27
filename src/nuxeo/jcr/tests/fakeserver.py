@@ -280,10 +280,7 @@ class FakeJCRController(object):
     def abort(self):
         self._begin()
 
-    def checkin(self, uuid):
-        raise NotImplementedError
-
-    def checkout(self, uuid):
+    def checkpoint(self, uuid):
         raise NotImplementedError
 
     def restore(self, uuid, versionName=''):

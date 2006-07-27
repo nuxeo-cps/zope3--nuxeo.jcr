@@ -458,19 +458,10 @@ class JCRController(object):
             return
         raise ConflictError(line)
 
-    def checkin(self, uuid):
+    def checkpoint(self, uuid):
         """See IJCRController.
         """
         self._writeline('i'+uuid)
-        line = self._readline()
-        if line == '.':
-            return
-        raise ProtocolError(line)
-
-    def checkout(self, uuid):
-        """See IJCRController.
-        """
-        self._writeline('o'+uuid)
         line = self._readline()
         if line == '.':
             return

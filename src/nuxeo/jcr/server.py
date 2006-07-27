@@ -657,26 +657,16 @@ class Processor:
         # Done!
         self.writeln('.')
 
-    def cmdCheckin(self, uuid):
+    def cmdCheckpoint(self, uuid):
         try:
             node = self.session.getNodeByUUID(uuid)
         except (ItemNotFoundException, IllegalArgumentException):
             return self.writeln("!No such uuid '%s'" % uuid)
         try:
             node.checkin()
-        except RepositoryException, e:
-            return self.writeln("!Cannot checkin: %s" % e)
-        self.writeln('.')
-
-    def cmdCheckout(self, uuid):
-        try:
-            node = self.session.getNodeByUUID(uuid)
-        except (ItemNotFoundException, IllegalArgumentException):
-            return self.writeln("!No such uuid '%s'" % uuid)
-        try:
             node.checkout()
         except RepositoryException, e:
-            return self.writeln("!Cannot checkout: %s" % e)
+            return self.writeln("!Cannot checkpoint: %s" % e)
         self.writeln('.')
 
     def cmdRestore(self, line):
@@ -690,19 +680,20 @@ class Processor:
                 node.restore(versionName, True)
             else:
                 node.restore(node.getBaseVersion(), True)
+            node.checkout()
+
+            stack = [child for child in node.getNodes()]
+            uuids = []
+            while True:
+                if not stack:
+                    break
+                node = stack.pop()
+                if node.isNodeType('mix:versionable'):
+                    continue
+                stack.extend([child for child in node.getNodes()])
+                uuids.append(node.getUUID())
         except RepositoryException, e:
             return self.writeln("!Cannot restore: %s" % e)
-
-        stack = [child for child in node.getNodes()]
-        uuids = []
-        while True:
-            if not stack:
-                break
-            node = stack.pop()
-            if node.isNodeType('mix:versionable'):
-                continue
-            stack.extend([child for child in node.getNodes()])
-            uuids.append(node.getUUID())
 
         self.writeln('.'+','.join(uuids))
 
@@ -741,8 +732,7 @@ class Processor:
         'p': (cmdPrepare, "Prepare the transaction."),
         'c': (cmdCommit, "Commit the prepared transaction."),
         'r': (cmdRollback, "Rollback the transaction."),
-        'i': (cmdCheckin, "Checkin."),
-        'o': (cmdCheckout, "Checkout."),
+        'i': (cmdCheckpoint, "Checkpoint."),
         't': (cmdRestore, "Restore."),
         'T': (cmdGetNodeType, "Get the primary type of a given uuid."),
         'S': (cmdGetNodeStates, "Get the state of the given uuids."),

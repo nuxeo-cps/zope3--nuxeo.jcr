@@ -377,15 +377,10 @@ class Document(ObjectBase, CapsuleDocument):
         """
         self._p_jar.restore(self, versionName)
 
-    def checkout(self):
+    def checkpoint(self):
         """See `nuxeo.capsule.interfaces.IDocument`
         """
-        self._p_jar.checkout(self)
-
-    def checkin(self):
-        """See `nuxeo.capsule.interfaces.IDocument`
-        """
-        self._p_jar.checkin(self)
+        self._p_jar.checkpoint(self)
 
     def isCheckedOut(self):
         """See `nuxeo.capsule.interfaces.IDocument`
