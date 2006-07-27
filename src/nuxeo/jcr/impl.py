@@ -31,10 +31,11 @@ from nuxeo.capsule.base import Workspace as CapsuleWorkspace
 from nuxeo.capsule.base import ListProperty as CapsuleListProperty
 from nuxeo.capsule.base import ObjectProperty as CapsuleObjectProperty
 
-from zope.event import notify
+import zope.event
 from zope.app.container.contained import notifyContainerModified
 from zope.app.container.contained import ObjectAddedEvent
 from OFS.event import ObjectWillBeRemovedEvent
+from zope.lifecycleevent import ObjectModifiedEvent
 
 logger = logging.getLogger('nuxeo.jcr.impl')
 
@@ -360,7 +361,7 @@ class Document(ObjectBase, CapsuleDocument):
             self.__dict__['_children'] = children # (avoid changing self)
         child = children.addChild(name, type_name)
         child = child.__of__(self)
-        notify(ObjectAddedEvent(child, self, name))
+        zope.event.notify(ObjectAddedEvent(child, self, name))
         notifyContainerModified(self)
         return child
 
@@ -368,7 +369,7 @@ class Document(ObjectBase, CapsuleDocument):
         """See `nuxeo.capsule.interfaces.IContainerBase`
         """
         child = self.getChild(name).__of__(self)
-        notify(ObjectWillBeRemovedEvent(child, self, name))
+        zope.event.notify(ObjectWillBeRemovedEvent(child, self, name))
         CapsuleDocument.removeChild(self, name)
         notifyContainerModified(self)
 
@@ -376,11 +377,18 @@ class Document(ObjectBase, CapsuleDocument):
         """See `nuxeo.capsule.interfaces.IDocument`
         """
         self._p_jar.restore(self, versionName)
+        zope.event.notify(ObjectModifiedEvent(self))
 
     def checkpoint(self):
         """See `nuxeo.capsule.interfaces.IDocument`
         """
         self._p_jar.checkpoint(self)
+        vuuid = self.getProperty('jcr:baseVersion').getTargetUUID()
+        version = self._p_jar.get(vuuid)
+        frozen = version.getProperty('jcr:frozenNode')
+        frozen = frozen.__of__(self)
+        zope.event.notify(ObjectAddedEvent(frozen, self, frozen.getName()))
+        return frozen
 
     def isCheckedOut(self):
         """See `nuxeo.capsule.interfaces.IDocument`
