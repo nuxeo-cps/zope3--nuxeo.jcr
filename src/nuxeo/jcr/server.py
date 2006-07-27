@@ -684,14 +684,17 @@ class Processor:
 
             stack = [child for child in node.getNodes()]
             uuids = []
-            while True:
-                if not stack:
-                    break
+            while stack:
                 node = stack.pop()
                 if node.isNodeType('mix:versionable'):
                     continue
+                try:
+                    uuid = node.getUUID()
+                except javax.jcr.UnsupportedRepositoryOperationException:
+                    print "XXX %s is not referenceable" % node.getPath()
+                    continue
+                uuids.append(uuid)
                 stack.extend([child for child in node.getNodes()])
-                uuids.append(node.getUUID())
         except RepositoryException, e:
             return self.writeln("!Cannot restore: %s" % e)
 
