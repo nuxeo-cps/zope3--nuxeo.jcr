@@ -692,7 +692,19 @@ class Processor:
                 node.restore(node.getBaseVersion(), True)
         except RepositoryException, e:
             return self.writeln("!Cannot restore: %s" % e)
-        self.writeln('.')
+
+        stack = [child for child in node.getNodes()]
+        uuids = []
+        while True:
+            if not stack:
+                break
+            node = stack.pop()
+            if node.isNodeType('mix:versionable'):
+                continue
+            stack.extend([child for child in node.getNodes()])
+            uuids.append(node.getUUID())
+
+        self.writeln('.'+','.join(uuids))
 
     def cmdPath(self, uuid):
         try:

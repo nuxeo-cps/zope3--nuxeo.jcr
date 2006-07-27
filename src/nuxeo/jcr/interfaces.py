@@ -70,6 +70,8 @@ class IJCRController(Interface):
 
     def restore(uuid, versionName=''):
         """Restore a node.
+
+        Return list of uuids to deactivate.
         """
 
     def getNodeTypeDefs():

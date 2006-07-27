@@ -481,8 +481,8 @@ class JCRController(object):
         """
         self._writeline('t'+uuid+' '+versionName)
         line = self._readline()
-        if line == '.':
-            return
+        if line.startswith('.'):
+            return line[1:].split(',')
         raise ProtocolError(line)
 
     def getPath(self, uuid):

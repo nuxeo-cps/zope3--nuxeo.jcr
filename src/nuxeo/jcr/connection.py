@@ -829,9 +829,14 @@ class Connection(object):
         self.savepoint()
         oid = obj._p_oid
         assert oid is not None
-        self.controller.restore(oid, versionName)
-        # Deactivate the node, some properties have changed
+        uuids = self.controller.restore(oid, versionName)
+        # Deactivate the node and objects corresponding to uuids
+        # returned by 'restore'
         obj._p_deactivate()
+        for uuid in uuids:
+            ob = self._cache.get(uuid)
+            if ob is not None:
+                ob._p_deactivate()
 
 
     ##################################################
