@@ -778,7 +778,7 @@ class Connection(object):
         path = path.replace('/ecm:children/', '/')
         if path[0] != '/':
             raise ValueError(path)
-        return path[1:]
+        return str(path[1:])
 
     def searchProperty(self, prop_name, value):
         """Search the JCR for nodes where prop_name = 'value'.
@@ -794,7 +794,7 @@ class Connection(object):
             path = path.replace('/ecm:children/', '/')
             if path[0] != '/':
                 raise ValueError(path)
-            res.append((uuid, path[1:]))
+            res.append((uuid, str(path[1:])))
         return res
 
     ##################################################
