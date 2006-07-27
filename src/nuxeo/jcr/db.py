@@ -25,7 +25,7 @@ from nuxeo.capsule.interfaces import IObjectBase
 from nuxeo.capsule.interfaces import IChildren # XXX IRoot
 from nuxeo.capsule.interfaces import IVersionHistory
 from nuxeo.capsule.interfaces import IVersion
-from nuxeo.capsule.interfaces import IFrozenNode
+from nuxeo.capsule.interfaces import IFrozenDocument
 import nuxeo.jcr.schema
 from nuxeo.jcr.impl import Children
 from nuxeo.jcr.impl import Document
@@ -94,7 +94,7 @@ class DB(ZODBDB):
             sm.addSchema('rep:root', IChildren) # XXX IRoot
             sm.addSchema('nt:versionHistory', IVersionHistory)
             sm.addSchema('nt:version', IVersion)
-            sm.addSchema('nt:frozenNode', IFrozenNode)
+            sm.addSchema('nt:frozenNode', IFrozenDocument)
 
             # Set base classes
             sm.setClass('rep:root', Children) # XXX Workspace? Root?
