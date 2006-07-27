@@ -670,7 +670,7 @@ class Processor:
         self.writeln('.')
 
     def cmdRestore(self, line):
-        uuid, versionName = line.split(' ')
+        uuid, versionName = line.split(' ', 1)
         try:
             node = self.session.getNodeByUUID(uuid)
         except (ItemNotFoundException, IllegalArgumentException):
