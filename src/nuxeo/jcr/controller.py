@@ -500,3 +500,13 @@ class JCRController(object):
             path = unicode(path, 'utf-8')
             res.append((uuid, path))
         return res
+
+    def move(self, uuid, dest_uuid, name):
+        """See IJCRController.
+        """
+        raise NotImplementedError
+
+    def copy(self, uuid, dest_uuid, name):
+        """See IJCRController.
+        """
+        raise NotImplementedError

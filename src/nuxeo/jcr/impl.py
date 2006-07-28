@@ -34,6 +34,9 @@ from nuxeo.capsule.base import ObjectProperty as CapsuleObjectProperty
 import zope.event
 from zope.app.container.contained import notifyContainerModified
 from zope.app.container.contained import ObjectAddedEvent
+from zope.app.container.contained import ObjectMovedEvent
+from OFS.event import ObjectClonedEvent
+from OFS.event import ObjectWillBeMovedEvent
 from OFS.event import ObjectWillBeRemovedEvent
 from zope.lifecycleevent import ObjectModifiedEvent
 
@@ -409,6 +412,32 @@ class Document(ObjectBase, CapsuleDocument):
             raise ValueError(prop_name)
         return self._p_jar.searchProperty(prop_name, value)
 
+    def moveDocument(self, destination, name):
+        """See `nuxeo.capsule.interfaces.IDocument`
+        """
+        container = aq_parent(aq_inner(self))
+        zope.event.notify(ObjectWillBeMovedEvent(self,
+                                                 container, self.getName(),
+                                                 destination, name))
+        self._p_jar.move(self, destination, name)
+        ob = destination.getChild(name).__of__(destination)
+        zope.event.notify(ObjectMovedEvent(ob,
+                                           container, self.getName(),
+                                           destination, name))
+        notifyContainerModified(container)
+        if aq_base(container) != aq_base(destination):
+            notifyContainerModified(destination)
+        return ob
+
+    def copyDocument(self, destination, name):
+        """See `nuxeo.capsule.interfaces.IDocument`
+        """
+        self._p_jar.copy(self, destination, name)
+        ob = destination.getChild(name).__of__(destination)
+        zope.event.notify(ObjectAddedEvent(ob, destination, name))
+        zope.event.notify(ObjectClonedEvent(ob, destination, name))
+        notifyContainerModified(destination)
+        return ob
 
 class Workspace(Document, CapsuleWorkspace):
     """JCR Workspace

@@ -798,6 +798,50 @@ class Connection(object):
         return res
 
     ##################################################
+    # Move / Copy
+
+    def move(self, obj, destination, name):
+        assert obj._p_jar is self
+        assert destination._p_jar is self
+        # Make sure all state is saved, and we have final oids
+        self.savepoint()
+        oid = obj._p_oid
+        assert oid is not None
+        # Find real destination
+        if not isinstance(destination, ContainerBase):
+            assert isinstance(destination, Document), destination
+            destination = destination._children
+        dest_oid = destination._p_oid
+        assert dest_oid is not None
+        # Record old parent
+        parent = obj.__parent__
+        # Do the move
+        self.controller.move(oid, dest_oid, name)
+        # The object has a new name and parent, deactivate it
+        obj._p_deactivate()
+        # The source and destination container have changed, deactivate them
+        parent._p_deactivate()
+        destination._p_deactivate()
+
+    def copy(self, obj, destination, name):
+        assert obj._p_jar is self
+        assert destination._p_jar is self
+        # Make sure all state is saved, and we have final oids
+        self.savepoint()
+        oid = obj._p_oid
+        assert oid is not None
+        # Find real destination
+        if not isinstance(destination, ContainerBase):
+            assert isinstance(destination, Document), destination
+            destination = destination._children
+        dest_oid = destination._p_oid
+        assert dest_oid is not None
+        # Do the copy
+        self.controller.copy(oid, dest_oid, name)
+        # The destination container has changed, deactivate it
+        destination._p_deactivate()
+
+    ##################################################
     # Versioning
 
     def checkpoint(self, obj):

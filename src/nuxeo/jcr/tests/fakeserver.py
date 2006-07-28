@@ -355,3 +355,9 @@ class FakeJCRController(object):
 
     def searchProperty(self, prop_name, value):
         raise NotImplementedError
+
+    def move(self, uuid, dest_uuid, name):
+        raise NotImplementedError
+
+    def copy(self, uuid, dest_uuid, name):
+        raise NotImplementedError

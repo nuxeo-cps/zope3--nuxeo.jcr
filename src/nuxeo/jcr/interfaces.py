@@ -153,3 +153,11 @@ class IJCRController(Interface):
 
         The paths are relative to the JCR workspace root.
         """
+
+    def move(uuid, dest_uuid, name):
+        """Move the document to another container.
+        """
+
+    def copy(uuid, dest_uuid, name):
+        """Copy the document to another container.
+        """
