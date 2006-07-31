@@ -79,7 +79,8 @@ class Connection(object):
 
     - _modified is a set, filled at commit/savepoint time with objects
       touched. Not that this can include object in _created from a
-      previous savepoint.
+      previous savepoint. _modified also contains objects modified
+      directly by the backend.
 
     Lifecycle of a persistent object
     --------------------------------
@@ -168,6 +169,8 @@ class Connection(object):
         self._manual_register = None
 
         # _modified and _created are filled at savepoint time
+        # _modified can also be filled by objects we know have been
+        # modified in the backend.
 
         # oids of modified objects (to be invalidated on an abort).
         self._modified = set()
@@ -286,7 +289,7 @@ class Connection(object):
                 if IProperty.providedBy(old):
                     self.deleteNode(old)
                 else:
-                    self._prop_changed(obj, name)
+                    self.registerPropertyChange(obj, name)
         else:
             old = obj._props.get(name, _MARKER)
             if old is not _MARKER:
@@ -305,7 +308,7 @@ class Connection(object):
                     # Updating a non-IProperty
                     assert not IProperty.providedBy(value), value
                     obj._props[name] = value
-                    self._prop_changed(obj, name)
+                    self.registerPropertyChange(obj, name)
             else:
                 # No previous value, create one
                 assert not IProperty.providedBy(value), value
@@ -321,7 +324,7 @@ class Connection(object):
                 else:
                     # Setting a new non-IProperty
                     obj._props[name] = value
-                    self._prop_changed(obj, name)
+                    self.registerPropertyChange(obj, name)
 
     def newValue(self, obj, name=None):
         """Create a new item for a ListProperty.
@@ -356,7 +359,8 @@ class Connection(object):
         oid = obj._p_oid
         assert oid is not None
 
-        self._maybeJoin()
+        # Mark parent for invalidation on abort
+        self.invalidateOnAbort(obj.__parent__)
 
         self._commands.append(('remove', oid))
         self.savepoint()
@@ -375,14 +379,8 @@ class Connection(object):
         if old == new:
             return
 
-        self._maybeJoin()
-
         # Mark object changed
-        try:
-            self._manual_register = oid
-            obj._p_changed = True
-        finally:
-            self._manual_register = None
+        self.markChanged(obj)
 
         inserts = findInserts(old, new)
         self._commands.append(('reorder', oid, inserts))
@@ -417,12 +415,11 @@ class Connection(object):
         self._added[oid] = obj
         self._added_order.append(oid)
 
-        # Mark parent changed # XXX should mark only for invalidation
-        try:
-            self._manual_register = parent._p_oid
-            parent._p_changed = True
-        finally:
-            self._manual_register = None
+        # Mark parent changed (we haven't savepointed yet)
+        self.markChanged(parent)
+
+        # Mark parent for invalidation on abort
+        self.invalidateOnAbort(parent)
 
         return obj
 
@@ -454,7 +451,16 @@ class Connection(object):
         if self._manual_register != oid:
             print 'XXX illegal direct attr modification of', repr(obj)
 
-    def _prop_changed(self, obj, name):
+    def markChanged(self, obj):
+        """Make the object's _p_changed record the fact that it's modified.
+        """
+        try:
+            self._manual_register = obj._p_oid
+            obj._p_changed = True
+        finally:
+            self._manual_register = None
+
+    def registerPropertyChange(self, obj, name):
         """Register a property name as changed.
         """
         oid = obj._p_oid
@@ -462,13 +468,14 @@ class Connection(object):
         if oid in self._added:
             return
 
-        try:
-            self._manual_register = oid
-            obj._p_changed = True
-        finally:
-            self._manual_register = None
+        self.markChanged(obj)
 
         self._registered[oid].add(name)
+
+    def invalidateOnAbort(self, obj):
+        """Invalidate the object if the transaction aborts.
+        """
+        self._modified.add(obj._p_oid)
 
     def changedInBackend(self, obj):
         """Take into account the fact that obj change in the JCR.
@@ -477,7 +484,7 @@ class Connection(object):
         assert obj._p_changed is not True, obj._p_changed
         # Make sure we'll refetch the object's new values
         obj._p_deactivate()
-        # Make sure that on abort we'll invalidate the object
+        # Invalidate on abort
         self._modified.add(obj._p_oid)
 
     ##################################################
