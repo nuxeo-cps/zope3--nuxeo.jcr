@@ -470,6 +470,16 @@ class Connection(object):
 
         self._registered[oid].add(name)
 
+    def changedInBackend(self, obj):
+        """Take into account the fact that obj change in the JCR.
+        """
+        # Assert that all object modifications have been sent
+        assert obj._p_changed is not True, obj._p_changed
+        # Make sure we'll refetch the object's new values
+        obj._p_deactivate()
+        # Make sure that on abort we'll invalidate the object
+        self._modified.add(obj._p_oid)
+
     ##################################################
     # ISynchronizer (we register ourselves when the connection is opened)
 
@@ -817,11 +827,11 @@ class Connection(object):
         parent = obj.__parent__
         # Do the move
         self.controller.move(oid, dest_oid, name)
-        # The object has a new name and parent, deactivate it
-        obj._p_deactivate()
-        # The source and destination container have changed, deactivate them
-        parent._p_deactivate()
-        destination._p_deactivate()
+        # The object has a new name and parent
+        self.changedInBackend(obj)
+        # The source and destination container have changed
+        self.changedInBackend(parent)
+        self.changedInBackend(destination)
 
     def copy(self, obj, destination, name):
         assert obj._p_jar is self
@@ -838,8 +848,8 @@ class Connection(object):
         assert dest_oid is not None
         # Do the copy
         self.controller.copy(oid, dest_oid, name)
-        # The destination container has changed, deactivate it
-        destination._p_deactivate()
+        # The destination container has changed
+        self.changedInBackend(destination)
 
     ##################################################
     # Versioning
@@ -850,14 +860,14 @@ class Connection(object):
         oid = obj._p_oid
         assert oid is not None
         self.controller.checkpoint(oid)
-        # Deactivate the node, some properties have changed
-        obj._p_deactivate()
-        # Deactivate the version history, its children have changed
+        # Some versioning-related properties have changed
+        self.changedInBackend(obj)
+        # The version history's children have changed
         # (this refetches obj as a side effect)
         vhuuid = obj.getProperty('jcr:versionHistory').getTargetUUID()
         vh = self._cache.get(vhuuid)
         if vh is not None:
-            vh._p_deactivate()
+            self.changedInBackend(vh)
 
     def restore(self, obj, versionName):
         assert obj._p_jar is self
@@ -865,13 +875,12 @@ class Connection(object):
         oid = obj._p_oid
         assert oid is not None
         uuids = self.controller.restore(oid, versionName)
-        # Deactivate the node and objects corresponding to uuids
-        # returned by 'restore'
-        obj._p_deactivate()
+        # During 'restore' a number of subnodes have been modified
+        self.changedInBackend(obj)
         for uuid in uuids:
             ob = self._cache.get(uuid)
             if ob is not None:
-                ob._p_deactivate()
+                self.changedInBackend(ob)
 
 
     ##################################################
