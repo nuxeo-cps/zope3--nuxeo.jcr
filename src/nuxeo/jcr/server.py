@@ -748,7 +748,25 @@ class Processor:
         self.writeln('.')
 
     def cmdCopy(self, line):
-        raise NotImplementedError
+        # uuid, dest container uuid, name in dest
+        uuid, cuuid, name = line.split(' ', 2)
+        name = unicode(name, 'utf-8')
+        try:
+            node = self.session.getNodeByUUID(uuid)
+        except (ItemNotFoundException, IllegalArgumentException):
+            return self.writeln("!No such uuid '%s'" % uuid)
+        try:
+            cnode = self.session.getNodeByUUID(cuuid)
+        except (ItemNotFoundException, IllegalArgumentException):
+            return self.writeln("!No such uuid '%s'" % cuuid)
+        path = node.getPath()
+        dpath = cnode.getPath()+'/'+name
+        try:
+            self.session.getWorkspace().copy(path, dpath)
+        except RepositoryException, e:
+            print 'XXX Copy exception: %s' % e
+            return self.writeln("!Copy exception: %s" % e)
+        self.writeln('.')
 
     _ops = {
         '?': (cmdHelp, "This help."),
