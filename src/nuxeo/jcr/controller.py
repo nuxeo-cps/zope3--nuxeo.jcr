@@ -504,9 +504,17 @@ class JCRController(object):
     def move(self, uuid, dest_uuid, name):
         """See IJCRController.
         """
-        raise NotImplementedError
+        self._writeline('m%s %s %s' % (uuid, dest_uuid, name.encode('utf-8')))
+        line = self._readline()
+        if line == '.':
+            return
+        raise ProtocolError(line)
 
     def copy(self, uuid, dest_uuid, name):
         """See IJCRController.
         """
-        raise NotImplementedError
+        self._writeline('C%s %s %s' % (uuid, dest_uuid, name.encode('utf-8')))
+        line = self._readline()
+        if line == '.':
+            return
+        raise ProtocolError(line)

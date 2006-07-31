@@ -726,6 +726,30 @@ class Processor:
             self.writeln('u%s %s' % (uuid, path.encode('utf-8')))
         self.writeln('.')
 
+    def cmdMove(self, line):
+        # uuid, dest container uuid, name in dest
+        uuid, cuuid, name = line.split(' ', 2)
+        name = unicode(name, 'utf-8')
+        try:
+            node = self.session.getNodeByUUID(uuid)
+        except (ItemNotFoundException, IllegalArgumentException):
+            return self.writeln("!No such uuid '%s'" % uuid)
+        try:
+            cnode = self.session.getNodeByUUID(cuuid)
+        except (ItemNotFoundException, IllegalArgumentException):
+            return self.writeln("!No such uuid '%s'" % cuuid)
+        path = node.getPath()
+        dpath = cnode.getPath()+'/'+name
+        try:
+            self.session.move(path, dpath)
+        except RepositoryException, e:
+            print 'XXX Move exception: %s' % e
+            return self.writeln("!Move exception: %s" % e)
+        self.writeln('.')
+
+    def cmdCopy(self, line):
+        raise NotImplementedError
+
     _ops = {
         '?': (cmdHelp, "This help."),
         'q': (cmdQuit, "Quit this connection."),
@@ -744,6 +768,8 @@ class Processor:
         'M': (cmdMultiple, "Send multiple commands (+/=/-/%)."),
         '/': (cmdPath, "Get the path of a UUID."),
         's': (cmdSearch, "Search a property = value."),
+        'm': (cmdMove, "Move a document."),
+        'C': (cmdCopy, "Copy a document."),
         }
 
 

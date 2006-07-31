@@ -21,6 +21,7 @@ information.
 
 import logging
 from persistent import Persistent
+from Acquisition import aq_base, aq_parent, aq_inner
 import zope.interface
 from nuxeo.capsule.base import IChildren
 from nuxeo.capsule.base import ObjectBase as CapsuleObjectBase
@@ -353,15 +354,19 @@ class Document(ObjectBase, CapsuleDocument):
         """
         return self._p_oid
 
-    def addChild(self, name, type_name):
-        """See `nuxeo.capsule.interfaces.IDocument`
+    def _ensureRealChildren(self):
+        """Make sure _children is not NoChildrenYet.
         """
-        children = self._children
-        # Are we creating the first child?
-        if isinstance(children, NoChildrenYet):
+        if isinstance(self._children, NoChildrenYet):
             children = self._p_jar.createChild(self, 'ecm:children',
                                                'ecmnt:children')
             self.__dict__['_children'] = children # (avoid changing self)
+
+    def addChild(self, name, type_name):
+        """See `nuxeo.capsule.interfaces.IDocument`
+        """
+        self._ensureRealChildren()
+        children = self._children
         child = children.addChild(name, type_name)
         child = child.__of__(self)
         zope.event.notify(ObjectAddedEvent(child, self, name))
@@ -416,6 +421,7 @@ class Document(ObjectBase, CapsuleDocument):
     def moveDocument(self, destination, name):
         """See `nuxeo.capsule.interfaces.IDocument`
         """
+        destination._ensureRealChildren()
         container = aq_parent(aq_inner(self))
         zope.event.notify(ObjectWillBeMovedEvent(self,
                                                  container, self.getName(),
@@ -433,6 +439,7 @@ class Document(ObjectBase, CapsuleDocument):
     def copyDocument(self, destination, name):
         """See `nuxeo.capsule.interfaces.IDocument`
         """
+        destination._ensureRealChildren()
         self._p_jar.copy(self, destination, name)
         ob = destination.getChild(name).__of__(destination)
         zope.event.notify(ObjectAddedEvent(ob, destination, name))
