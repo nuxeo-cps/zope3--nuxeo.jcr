@@ -443,7 +443,7 @@ class Document(ObjectBase, CapsuleDocument):
         self._p_jar.copy(self, destination, name)
         ob = destination.getChild(name).__of__(destination)
         zope.event.notify(ObjectAddedEvent(ob, destination, name))
-        zope.event.notify(ObjectClonedEvent(ob, destination, name))
+        zope.event.notify(ObjectClonedEvent(ob))
         notifyContainerModified(destination)
         return ob
 
