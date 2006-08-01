@@ -56,7 +56,6 @@ from java.lang import IllegalArgumentException
 import javax.jcr
 from javax.jcr import RepositoryException # toplevel exception
 from javax.jcr import ItemNotFoundException
-import javax.jcr.observation.EventListener
 from javax.jcr.observation.Event import NODE_ADDED
 from javax.jcr.observation.Event import NODE_REMOVED
 from javax.jcr.observation.Event import PROPERTY_ADDED
@@ -70,6 +69,7 @@ from javax.transaction.xa import Xid
 from org.apache.jackrabbit.core import TransientRepository
 from org.apache.jackrabbit.core.nodetype.compact import \
      CompactNodeTypeDefReader
+from org.apache.jackrabbit.core.observation import SynchronousEventListener
 
 
 False, True = 0, 1
@@ -122,7 +122,7 @@ def dumpNode(node, spaces, output):
         dumpNode(n, spaces, output)
 
 
-class Listener(javax.jcr.observation.EventListener):
+class Listener(SynchronousEventListener):
 
     strings = {
         NODE_ADDED: 'NODE_ADDED',
