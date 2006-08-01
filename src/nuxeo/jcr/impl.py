@@ -411,11 +411,6 @@ class Document(ObjectBase, CapsuleDocument):
     def searchProperty(self, prop_name, value):
         """See `nuxeo.capsule.interfaces.IDocument`
         """
-        if prop_name not in (
-            'ecm:versionHistory', # XXX BBB removed soon
-            'ecm:versionableUuid',
-            ):
-            raise ValueError(prop_name)
         return self._p_jar.searchProperty(prop_name, value)
 
     def moveDocument(self, destination, name):
