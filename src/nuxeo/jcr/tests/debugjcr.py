@@ -234,12 +234,17 @@ class Main:
 
     def main(self):
         try:
-            self.doit_transactions()
+            #self.doit_transactions()
+            self.doit_dump()
         finally:
             if self.session1 is not None:
                 self.session1.logout()
             if self.session2 is not None:
                 self.session2.logout()
+
+    def doit_dump(self):
+        session = repository.login(credentials, workspaceName)
+        session.exportSystemView('/', sys.stdout, False, False)
 
     def doit_listeners(self):
         # first session
