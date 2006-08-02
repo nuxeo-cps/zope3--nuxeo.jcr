@@ -23,7 +23,6 @@ import logging
 from persistent import Persistent
 from Acquisition import aq_base, aq_parent, aq_inner
 import zope.interface
-from nuxeo.capsule.base import IChildren
 from nuxeo.capsule.base import ObjectBase as CapsuleObjectBase
 from nuxeo.capsule.base import ContainerBase as CapsuleContainerBase
 from nuxeo.capsule.base import Children as CapsuleChildren
@@ -31,6 +30,8 @@ from nuxeo.capsule.base import Document as CapsuleDocument
 from nuxeo.capsule.base import Workspace as CapsuleWorkspace
 from nuxeo.capsule.base import ListProperty as CapsuleListProperty
 from nuxeo.capsule.base import ObjectProperty as CapsuleObjectProperty
+from nuxeo.capsule.interfaces import IChildren
+from nuxeo.capsule.interfaces import IFrozenDocument
 
 import zope.event
 from zope.app.container.contained import notifyContainerModified
@@ -397,6 +398,19 @@ class Document(ObjectBase, CapsuleDocument):
         frozen = frozen.__of__(self)
         zope.event.notify(ObjectAddedEvent(frozen, self, frozen.getName()))
         return frozen
+
+    def removeFrozen(self):
+        """Remove a frozen node.
+        """
+        if not IFrozenDocument.provided(self):
+            raise ValueError("Not a frozen: %s" % self)
+        # Make sure we send events in the context of the workspace doc
+        container = self.getVersionableDocument() # acquisition-wrapped
+        frozen = aq_base(self).__of__(container)
+        name = frozen.getName()
+        zope.event.notify(ObjectWillBeRemovedEvent(frozen, container, name))
+        self._p_jar.removeFrozen(frozen)
+        # Don't notifyContainerModified, it's not really changed
 
     def isCheckedOut(self):
         """See `nuxeo.capsule.interfaces.IDocument`

@@ -889,6 +889,19 @@ class Connection(object):
             if ob is not None:
                 self.changedInBackend(ob)
 
+    def removeFrozen(self, obj):
+        assert obj._p_jar is self
+        oid = obj._p_oid
+        assert oid is not None
+        assert obj.getProperty('jcr:primaryType') == 'nt:frozenNode'
+        version = obj.__parent__
+        vh = version.__parent__
+        self._commands.append(('remove', oid))
+        self.savepoint()
+        # Remove version
+        version._p_invalidate()
+        # Refetch vh
+        self.changedInBackend(vh)
 
     ##################################################
     # Save

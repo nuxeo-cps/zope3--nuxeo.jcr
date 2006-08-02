@@ -442,7 +442,7 @@ class Processor:
             # end multiple commands
             commands = self.commands
             self.commands = None
-            return self.processCommands(commands)
+            return self.processMultipleCommands(commands)
         else:
             self.continuations.append(self.expectMultipleOne)
 
@@ -576,7 +576,7 @@ class Processor:
         name, before = unicode(line, 'utf-8').split('/')
         self.command['inserts'].append((name, before))
 
-    def processCommands(self, commands):
+    def processMultipleCommands(self, commands):
         map = {}
         for command in commands:
             op = command['op']
@@ -625,11 +625,29 @@ class Processor:
                     node = self.session.getNodeByUUID(uuid)
                 except (ItemNotFoundException, IllegalArgumentException):
                     return self.writeln("!No such uuid '%s'" % uuid)
-                try:
-                    node.remove()
-                except RepositoryException, e:
-                    return self.writeln("!Cannot remove node '%s': %s"
-                                        % (uuid, e))
+                t = node.getProperty('jcr:primaryType').getString()
+                if t == 'nt:frozenNode':
+                    # Removing a frozen, remove the version
+                    versionName = node.getParent().getName()
+                    baseuuid = node.getProperty('jcr:frozenUuid')
+                    try:
+                        base = self.session.getNodeByUUID(baseuuid)
+                    except (ItemNotFoundException, IllegalArgumentException):
+                        return self.writeln("!No such uuid '%s'" % baseuuid)
+                    try:
+                        base.getVersionHistory().removeVersion(versionName)
+                    except RepositoryException, e:
+                        print 'XXX removeVersion exception: %s' % e
+                        return self.writeln("!Cannot remove frozen '%s': %s"
+                                            % (uuid, e))
+                    # XXX invalidate the vh as its children changed
+                else:
+                    # Removing a normal node
+                    try:
+                        node.remove()
+                    except RepositoryException, e:
+                        return self.writeln("!Cannot remove node '%s': %s"
+                                            % (uuid, e))
             elif op == 'reorder':
                 uuid = command['uuid']
                 if map.has_key(uuid):
