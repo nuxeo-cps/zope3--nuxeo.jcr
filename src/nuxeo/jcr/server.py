@@ -324,6 +324,7 @@ class Processor:
         for node_uuid in uuids:
             try:
                 node = self.session.getNodeByUUID(node_uuid)
+                node.getName() # Could fail if node was just removed
             except (ItemNotFoundException, IllegalArgumentException):
                 return self.writeln("!No uuid '%s'" % node_uuid)
         # Fetch all info
