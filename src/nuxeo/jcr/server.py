@@ -42,6 +42,7 @@ DEBUG = 1
 
 import os
 import sys
+import time
 from types import ListType
 
 import java.io
@@ -121,6 +122,8 @@ def dumpNode(node, spaces, output):
     for n in node.getNodes():
         dumpNode(n, spaces, output)
 
+def timestampe():
+    return time.strftime("%Y-%m-%d %H:%M:%S")
 
 class Listener(SynchronousEventListener):
 
@@ -307,20 +310,6 @@ class Processor:
         self.write(NODETYPEDEFS)
         self.writeln('\n.')
 
-    def cmdGetNodeChildren(self, uuid):
-        try:
-            node = self.session.getNodeByUUID(uuid)
-        except (ItemNotFoundException, IllegalArgumentException):
-            return self.writeln("!No such uuid '%s'" % uuid)
-        for subnode in node.getNodes():
-            try:
-                subuuid = subnode.getUUID()
-            except javax.jcr.UnsupportedRepositoryOperationException:
-                print "XXX Node %s is not referenceable" % subnode.getPath()
-                continue
-            self.writeln('%s %s' % (subnode.getUUID(), subnode.getName()))
-        self.writeln('.')
-
     def cmdGetNodeType(self, uuid):
         try:
             node = self.session.getNodeByUUID(uuid)
@@ -354,13 +343,16 @@ class Processor:
                 self.writeln('^%s' % parent_uuid)
             # Children
             for subnode in node.getNodes():
+                nodeName = subnode.getName()
+                if nodeName in ('jcr:system', 'jcr:versionLabels'):
+                    # These aren't referenceable
+                    continue
                 try:
                     subuuid = subnode.getUUID()
                 except javax.jcr.UnsupportedRepositoryOperationException:
                     print "XXX %s is not referenceable" % subnode.getPath()
                     continue
                 nodeType = subnode.getProperty('jcr:primaryType').getString()
-                nodeName = subnode.getName()
                 self.writeln('N%s %s %s' % (subuuid, nodeType, nodeName))
             # Properties
             for prop in node.getProperties():
@@ -629,7 +621,7 @@ class Processor:
                 if t == 'nt:frozenNode':
                     # Removing a frozen, remove the version
                     versionName = node.getParent().getName()
-                    baseuuid = node.getProperty('jcr:frozenUuid')
+                    baseuuid = node.getProperty('jcr:frozenUuid').getString()
                     try:
                         base = self.session.getNodeByUUID(baseuuid)
                     except (ItemNotFoundException, IllegalArgumentException):
@@ -709,7 +701,6 @@ class Processor:
                 try:
                     uuid = node.getUUID()
                 except javax.jcr.UnsupportedRepositoryOperationException:
-                    print "XXX %s is not referenceable" % node.getPath()
                     continue
                 uuids.append(uuid)
                 stack.extend([child for child in node.getNodes()])
@@ -737,7 +728,6 @@ class Processor:
             try:
                 uuid = node.getUUID()
             except javax.jcr.UnsupportedRepositoryOperationException:
-                print "XXX %s is not referenceable" % node.getPath()
                 continue
             res.append((uuid, node.getPath()))
         for uuid, path in res:
@@ -810,7 +800,7 @@ class Processor:
 
 
     def cmdCommand(self, line):
-        print "XXX processing command", repr(line)
+        print "%s Processing %s" % (timestampe(), repr(line))
         if not line: # XXX
             return
         if line.lower() == 'help': # XXX
@@ -981,7 +971,7 @@ class Server:
         listenChannel.socket().bind(isa)
         listenChannel.register(selector, SelectionKey.OP_ACCEPT)
 
-        print "Listening."
+        print "%s Listening" % timestampe()
 
         while selector.select() > 0:
             iter = selector.selectedKeys().iterator()
