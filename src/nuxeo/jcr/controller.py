@@ -91,6 +91,7 @@ class JCRController(object):
         if DEBUG:
             print 'XXX > %r' % data
         self._sock.sendall(data)
+        # could get error: (32, 'Broken pipe')
 
     def _writeline(self, data):
         try:
@@ -116,6 +117,9 @@ class JCRController(object):
             todo -= length
         while True:
             chunk = self._sock.recv(8192)
+            if not chunk: # EOF
+                raise IOError("JCR server disconnected")
+                # next recv() gets error: (54, 'Connection reset by peer')
             self._unprocessed.append(chunk)
             i += 1
             length = len(chunk)
@@ -131,6 +135,8 @@ class JCRController(object):
                 return self._extract(i, pos, 1)
         while True:
             chunk = self._sock.recv(8192)
+            if not chunk: # EOF
+                raise IOError("JCR server disconnected")
             self._unprocessed.append(chunk)
             i += 1
             pos = chunk.find('\n')
