@@ -494,9 +494,9 @@ class JCRController(object):
             line = self._readline()
             if line == '.':
                 break
-            if line.startswith('!'):
+            if not line.startswith('u'):
                 raise ProtocolError(line)
-            uuid, path = line.split(' ', 1)
+            uuid, path = line[1:].split(' ', 1)
             path = unicode(path, 'utf-8')
             res.append((uuid, path))
         return res
