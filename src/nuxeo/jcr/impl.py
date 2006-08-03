@@ -32,6 +32,7 @@ from nuxeo.capsule.base import ListProperty as CapsuleListProperty
 from nuxeo.capsule.base import ObjectProperty as CapsuleObjectProperty
 from nuxeo.capsule.interfaces import IChildren
 from nuxeo.capsule.interfaces import IFrozenDocument
+from nuxeo.capsule.interfaces import IProxy
 
 import zope.event
 from zope.app.container.contained import notifyContainerModified
@@ -402,14 +403,14 @@ class Document(ObjectBase, CapsuleDocument):
     def removeFrozen(self):
         """Remove a frozen node.
         """
-        if not IFrozenDocument.provided(self):
+        if not IFrozenDocument.providedBy(self):
             raise ValueError("Not a frozen: %s" % self)
-        # Make sure we send events in the context of the workspace doc
-        container = self.getVersionableDocument() # acquisition-wrapped
-        frozen = aq_base(self).__of__(container)
-        name = frozen.getName()
-        zope.event.notify(ObjectWillBeRemovedEvent(frozen, container, name))
-        self._p_jar.removeFrozen(frozen)
+        if IProxy.providedBy(self):
+            raise ValueError("Frozen must be not removed in context of proxy")
+        container = aq_parent(aq_inner(self))
+        name = self.getName()
+        zope.event.notify(ObjectWillBeRemovedEvent(self, container, name))
+        self._p_jar.removeFrozen(self)
         # Don't notifyContainerModified, it's not really changed
 
     def isCheckedOut(self):
