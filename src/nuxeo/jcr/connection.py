@@ -45,6 +45,9 @@ from nuxeo.capsule.interfaces import IChildren
 from nuxeo.capsule.interfaces import IProperty
 from nuxeo.capsule.interfaces import IListProperty
 from nuxeo.capsule.interfaces import ICapsuleField
+from nuxeo.capsule.interfaces import IFrozenDocument
+from nuxeo.capsule.interfaces import IVersion
+from nuxeo.capsule.interfaces import IVersionHistory
 
 from nuxeo.jcr.impl import Document
 from nuxeo.jcr.impl import ObjectBase
@@ -893,9 +896,11 @@ class Connection(object):
         assert obj._p_jar is self
         oid = obj._p_oid
         assert oid is not None
-        assert obj.getProperty('jcr:primaryType') == 'nt:frozenNode'
+        assert IFrozenDocument.providedBy(obj)
         version = obj.__parent__
+        assert version.getSchema().isOrExtends(IVersion)
         vh = version.__parent__
+        assert vh.getSchema().isOrExtends(IVersionHistory)
         self._commands.append(('remove', oid))
         self.savepoint()
         # Remove version
