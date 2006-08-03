@@ -368,6 +368,12 @@ class Connection(object):
         self._commands.append(('remove', oid))
         self.savepoint()
 
+        # XXX should be done by savepoint code
+        # Remove from cache
+        del self._cache[oid]
+        # Remove link from object to its parent in case it's still live
+        obj.__dict__['__parent__'] = None
+
     def reorderChildren(self, obj, old, new):
         """Reorder children.
 
@@ -905,6 +911,11 @@ class Connection(object):
         self.savepoint()
         # Remove version
         version._p_invalidate()
+        # XXX should be done by savepoint code
+        # Remove frozen from cache
+        del self._cache[oid]
+        # Remove link from frozen to its parent in case it's still live
+        obj.__dict__['__parent__'] = None
         # Refetch vh
         self.changedInBackend(vh)
 
