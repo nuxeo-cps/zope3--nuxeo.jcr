@@ -877,6 +877,8 @@ class InterfaceMaker(object):
                         raise ValueError("List cannot hold more than one "
                                          "type for [%s] + %s" %
                                          (type_name, nodename))
+                    # XXX check that we're orderable here, otherwise
+                    # it's not really a List but a Dict
                     field = ListPropertyField(schema, __name__=nodename)
                 else:
                     field = ObjectPropertyField(schema, __name__=nodename)
