@@ -310,8 +310,10 @@ class Connection(object):
                 else:
                     # Updating a non-IProperty
                     assert not IProperty.providedBy(value), value
-                    obj._props[name] = value
-                    self.registerPropertyChange(obj, name)
+                    if value != old:
+                        # Only update if value differs
+                        obj._props[name] = value
+                        self.registerPropertyChange(obj, name)
             else:
                 # No previous value, create one
                 assert not IProperty.providedBy(value), value
