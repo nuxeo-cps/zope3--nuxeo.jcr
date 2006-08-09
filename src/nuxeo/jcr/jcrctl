@@ -23,7 +23,7 @@ if [ ! -f $CONFFILE ]; then
 fi
 source $CONFFILE
 
-if [ "start" = "$1" -o "fg" = "$1" ]; then
+if [ "start" = "$1" -o "fg" = "$1" -o "jython" = "$1" ]; then
     cd $INSTANCE
     LOG=$INSTANCE/log/jcr.log
     REPO=$INSTANCE/var/jackrabbit
@@ -47,8 +47,11 @@ if [ "start" = "$1" -o "fg" = "$1" ]; then
     if [ "start" = "$1" ]; then
         touch $LOG
         jython $SERVER $REPO $PORT $CNDS >>$LOG 2>&1 &
-    else
+    elif [ "fg" = "$1" ]; then
         jython $SERVER $REPO $PORT $CNDS
+    else
+        shift
+        jython "$@"
     fi
 
 elif [ "stop" = "$1" ]; then
@@ -59,6 +62,6 @@ elif [ "debug" = "$1" ]; then
 
 else
     echo "Unknown command $1" >&2
-    echo "Usage: jcrctl [start | fg | stop | debug]" >&2
+    echo "Usage: jcrctl [start | fg | stop | debug | jython]" >&2
     exit 1
 fi
