@@ -331,8 +331,11 @@ class JCRController(object):
     def sendCommands(self, commands):
         """See IJCRController.
         """
-        self._writeline('M')
+        starting = True
         for command in commands:
+            if starting:
+                self._writeline('M')
+                starting = False
             op = command[0]
             if op == 'add':
                 puuid, name, node_type, props, token = command[1:]
@@ -363,6 +366,9 @@ class JCRController(object):
                 self._writeline('%')
             else:
                 raise ProtocolError("invalid op %r" % (op,))
+
+        if starting:
+            return {}
 
         # End of commands
         self._writeline('.')
