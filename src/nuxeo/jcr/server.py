@@ -233,7 +233,7 @@ class Processor:
             while e is not None:
                 m = e.getMessage()
                 if m is not None:
-                    msg = m
+                    msg = msg+'; '+m
                     if msg.endswith(' has been modified externally'):
                         break
                 e = e.getCause()
