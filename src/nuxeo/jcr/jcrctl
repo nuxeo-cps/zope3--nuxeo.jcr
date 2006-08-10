@@ -28,6 +28,9 @@ if [ "start" = "$1" -o "fg" = "$1" -o "jython" = "$1" ]; then
     LOG=$INSTANCE/log/jcr.log
     REPO=$INSTANCE/var/jackrabbit
     SERVER=$INSTANCE/Products/lib/python/nuxeo/jcr/server.py
+    MAVEN=$HOME/.maven/repository
+    MAVEN_JACK=$MAVEN/org.apache.jackrabbit/jars
+    DEV_JACK=$HOME/Eclipse/jackrabbit
 
     CLASSPATH=$JARS/commons-collections-3.1.jar
     CLASSPATH=$CLASSPATH:$JARS/concurrent-1.3.4.jar
@@ -35,6 +38,10 @@ if [ "start" = "$1" -o "fg" = "$1" -o "jython" = "$1" ]; then
     CLASSPATH=$CLASSPATH:$JARS/geronimo-spec-jta-1.0-M1.jar
     CLASSPATH=$CLASSPATH:$JARS/jackrabbit-core-1.0.1.jar
     CLASSPATH=$CLASSPATH:$JARS/jackrabbit-jcr-commons-1.0.1.jar
+    #CLASSPATH=$CLASSPATH:$MAVEN_JACK/jackrabbit-core-1.0-SNAPSHOT.jar
+    #CLASSPATH=$CLASSPATH:$MAVEN_JACK/jackrabbit-jcr-commons-1.0-SNAPSHOT.jar
+    #CLASSPATH=$CLASSPATH:$DEV_JACK/target/jackrabbit-core-1.0-SNAPSHOT.jar
+    #CLASSPATH=$CLASSPATH:$DEV_JACK/modules/commons/target/jackrabbit-jcr-commons-1.0-SNAPSHOT.jar
     CLASSPATH=$CLASSPATH:$JARS/jcr-1.0.jar
     CLASSPATH=$CLASSPATH:$JARS/junit-3.8.1.jar
     CLASSPATH=$CLASSPATH:$JARS/log4j-1.2.8.jar
