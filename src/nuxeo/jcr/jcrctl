@@ -52,10 +52,12 @@ if [ "start" = "$1" -o "fg" = "$1" -o "jython" = "$1" ]; then
     export CLASSPATH
 
     if [ "start" = "$1" ]; then
+        shift
         touch $LOG
-        jython $SERVER $REPO $PORT $CNDS >>$LOG 2>&1 &
+        jython $SERVER "$@" $REPO $PORT $CNDS >>$LOG 2>&1 &
     elif [ "fg" = "$1" ]; then
-        jython $SERVER $REPO $PORT $CNDS
+        shift
+        jython $SERVER "$@" $REPO $PORT $CNDS
     else
         shift
         jython "$@"
