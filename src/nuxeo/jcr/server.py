@@ -39,6 +39,7 @@ java -Dpython.home=$jython \
 """
 
 DEBUG = 1
+DEBUG_RAISE = 0
 
 import os
 import sys
@@ -585,7 +586,8 @@ class Processor:
                     node = parent.addNode(command['name'],
                                           command['node_type'])
                 except RepositoryException, e:
-                    print "XXX Cannot add '%s': %s" % (command['name'], e)
+                    if DEBUG_RAISE:
+                        raise
                     return self.writeln("!Cannot add '%s': %s" % (command['name'], e))
                 for key, value in command['props'].items():
                     try:
@@ -630,7 +632,8 @@ class Processor:
                     try:
                         base.getVersionHistory().removeVersion(versionName)
                     except RepositoryException, e:
-                        print 'XXX removeVersion exception: %s' % e
+                        if DEBUG_RAISE:
+                            raise
                         return self.writeln("!Cannot remove frozen '%s': %s"
                                             % (uuid, e))
                     # XXX invalidate the vh as its children changed
@@ -639,6 +642,8 @@ class Processor:
                     try:
                         node.remove()
                     except RepositoryException, e:
+                        if DEBUG_RAISE:
+                            raise
                         return self.writeln("!Cannot remove node '%s': %s"
                                             % (uuid, e))
             elif op == 'reorder':
@@ -659,6 +664,8 @@ class Processor:
         try:
             self.root.save()
         except RepositoryException, e:
+            if DEBUG_RAISE:
+                raise
             return self.writeln("!Cannot save: %s" % e)
 
         # Write token map
@@ -999,7 +1006,8 @@ class Server:
                         except:
                             pass
                         print "XXX Trapped exception: %s" % e
-                        #raise
+                        if DEBUG_RAISE:
+                            raise
                 elif key.isWritable():
                     key.attachment().doWrite()
 
@@ -1102,8 +1110,11 @@ def run_server(repoconf, repopath, cndpath, port):
 
 
 if __name__ == '__main__':
+    if len(sys.argv) > 0 and sys.argv[1] == '-raise':
+        del sys.argv[1]
+        DEBUG_RAISE = True
     if len(sys.argv) < 4:
-        print >>sys.stderr, "Usage: server.py <repopath> <port> <cndpath> <cndpath...>"
+        print >>sys.stderr, "Usage: server.py [-raise] <repopath> <port> <cndpath> <cndpath...>"
         sys.exit(1)
 
     repopath = sys.argv[1]
