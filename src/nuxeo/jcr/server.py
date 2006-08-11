@@ -1110,11 +1110,11 @@ def run_server(repoconf, repopath, cndpath, port):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) > 0 and sys.argv[1] == '-raise':
+    if len(sys.argv) > 0 and sys.argv[1] == '--raise':
         del sys.argv[1]
         DEBUG_RAISE = True
     if len(sys.argv) < 4:
-        print >>sys.stderr, "Usage: server.py [-raise] <repopath> <port> <cndpath> <cndpath...>"
+        print >>sys.stderr, "Usage: server.py [--raise] <repopath> <port> <cndpath> <cndpath...>"
         sys.exit(1)
 
     repopath = sys.argv[1]
