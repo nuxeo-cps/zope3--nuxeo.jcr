@@ -404,9 +404,13 @@ class JCRController(object):
     def _sendOneProp(self, key, value):
         # key is passed for error logging purposes
         if isinstance(value, str):
-            # XXX should be unicode!
-            logger.warning("Property %r has non-unicode value %r", key, value)
-            value = unicode(value, 'utf-8')
+            try:
+                # Maybe it's just a simple string like '' or basic ascii
+                value = unicode(value, 'ascii')
+            except UnicodeError:
+                # We'll assume it's utf-8, but the application is faulty
+                logger.error("Property %r has non-unicode value %r", key, value)
+                value = unicode(value, 'utf-8')
 
         if isinstance(value, unicode):
             v = value.encode('utf-8')
