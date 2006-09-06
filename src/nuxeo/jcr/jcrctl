@@ -38,10 +38,12 @@ if [ "start" = "$1" -o "fg" = "$1" -o "jython" = "$1" ]; then
     CLASSPATH=$CLASSPATH:$JARS/geronimo-spec-jta-1.0-M1.jar
     CLASSPATH=$CLASSPATH:$JARS/jackrabbit-core-1.0.1.jar
     CLASSPATH=$CLASSPATH:$JARS/jackrabbit-jcr-commons-1.0.1.jar
-    #CLASSPATH=$CLASSPATH:$MAVEN_JACK/jackrabbit-core-1.0-SNAPSHOT.jar
-    #CLASSPATH=$CLASSPATH:$MAVEN_JACK/jackrabbit-jcr-commons-1.0-SNAPSHOT.jar
-    #CLASSPATH=$CLASSPATH:$DEV_JACK/target/jackrabbit-core-1.0-SNAPSHOT.jar
-    #CLASSPATH=$CLASSPATH:$DEV_JACK/modules/commons/target/jackrabbit-jcr-commons-1.0-SNAPSHOT.jar
+    #CLASSPATH=$CLASSPATH:$JARS/jackrabbit-core-1.1-SNAPSHOT.jar
+    #CLASSPATH=$CLASSPATH:$JARS/jackrabbit-jcr-commons-1.1-SNAPSHOT.jar
+    #CLASSPATH=$CLASSPATH:$MAVEN_JACK/jackrabbit-core-1.1-SNAPSHOT.jar
+    #CLASSPATH=$CLASSPATH:$MAVEN_JACK/jackrabbit-jcr-commons-1.1-SNAPSHOT.jar
+    #CLASSPATH=$CLASSPATH:$DEV_JACK/target/jackrabbit-core-1.1-SNAPSHOT.jar
+    #CLASSPATH=$CLASSPATH:$DEV_JACK/modules/commons/target/jackrabbit-jcr-commons-1.1-SNAPSHOT.jar
     CLASSPATH=$CLASSPATH:$JARS/jcr-1.0.jar
     CLASSPATH=$CLASSPATH:$JARS/junit-3.8.1.jar
     CLASSPATH=$CLASSPATH:$JARS/log4j-1.2.8.jar
