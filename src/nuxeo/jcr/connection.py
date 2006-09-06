@@ -284,6 +284,12 @@ class Connection(object):
         oid = obj._p_oid
         assert oid is not None
 
+        __traceback_info__ = obj, name, value
+
+        # Sanity check now instead of letting the JCR do it during commit
+        if getattr(obj, '__name__', None) == u'jcr:frozenNode':
+            raise ValueError("Cannot modify a frozen node.")
+
         if value is None:
             if name in obj._props:
                 # Remove
