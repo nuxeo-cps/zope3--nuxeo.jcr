@@ -236,6 +236,8 @@ class Processor:
                 if m is not None:
                     msg = msg+'; '+m
                     if msg.endswith(' has been modified externally'):
+                        if DEBUG_RAISE:
+                            raise
                         break
                 e = e.getCause()
             return "!"+msg
