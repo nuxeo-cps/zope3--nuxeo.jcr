@@ -154,28 +154,6 @@ def checkRepositoryInit(session):
         root.save()
         node.checkin()
 
-def checkNodeTypeDefs(session):
-    return
-    workspace = session.getWorkspace()
-    ntm = workspace.getNodeTypeManager()
-    try:
-        ntm.getNodeType('ecmnt:document')
-        return
-    except:
-        # NoSuchNodeTypeException, UnknownPrefixException
-        pass
-    # Create node types from CND data
-    nsr = workspace.getNamespaceRegistry()
-    for prefix, uri in NAMESPACES:
-        try:
-            nsr.registerNamespace(prefix, uri)
-        except javax.jcr.NamespaceException:
-            # already registered
-            pass
-    reader = java.io.ByteArrayInputStream(NODETYPEDEFS)
-    #reader = java.io.StringReader(NODETYPEDEFS)
-    ntm.registerNodeTypes(reader, 'text/x-jcr-cnd')
-
 
 class Listener(javax.jcr.observation.EventListener):
     strings = {
@@ -215,169 +193,12 @@ class Main:
 
     def main(self):
         try:
-            #self.doit_dump()
-            self.doit_listeners()
-            self.doit_transactions()
             self.doit_drafts()
         finally:
             if self.session1 is not None:
                 self.session1.logout()
             if self.session2 is not None:
                 self.session2.logout()
-
-    def doit_dump(self):
-        session = repository.login(credentials, workspaceName)
-        session.exportSystemView('/', sys.stdout, False, False)
-
-    def doit_listeners(self):
-        # first session
-        session = repository.login(credentials, workspaceName)
-        self.session1 = session
-        checkRepositoryInit(session)
-        workspace = session.getWorkspace()
-        xaresource = session.getXAResource()
-        xid = DummyXid()
-        xaresource.start(xid, XAResource.TMNOFLAGS)
-
-        om = workspace.getObservationManager()
-        listener = Listener('1')
-        eventTypes = (NODE_ADDED | NODE_REMOVED |
-                      PROPERTY_ADDED | PROPERTY_REMOVED | PROPERTY_CHANGED)
-        isDeep = True
-        noLocal = True
-        om.addEventListener(listener, eventTypes, '/',
-                            isDeep, None, None, noLocal)
-
-
-        # session 2
-        session2 = repository.login(credentials, workspaceName)
-        self.session2 = session2
-        workspace2 = session2.getWorkspace()
-        om2 = workspace2.getObservationManager()
-        listener2 = Listener('2')
-        isDeep = True
-        noLocal = False
-        om2.addEventListener(listener2, eventTypes, '/',
-                             isDeep, None, None, noLocal)
-
-        # session 1
-        print 'deleting'
-        root = session.getRootNode()
-        while root.hasNode('blob'):
-            node = root.getNode('blob')
-            node.remove()
-            #root.save()
-        print 'adding'
-        blob1 = root.addNode('blob', 'nt:unstructured')
-        #print 'added', blob1.getUUID()
-        blob2 = root.addNode('blob', 'nt:unstructured')
-        #print 'added', blob2.getUUID()
-        root.save()
-        print 'setting prop'
-        blob1.setProperty('youpi', 'true', BOOLEAN)
-        blob2.setProperty('hoho', 'false', BOOLEAN)
-        root.orderBefore('blob[2]', 'blob[1]')
-        root.save()
-        if 0:
-            print 'add mixin'
-            blob.addMixin('mix:versionable')
-            print 'save'
-            root.save()
-        if 0:
-            print 'checkin'
-            blob.checkin()
-            print 'checkout'
-            blob.checkout()
-        print 'setting subnode'
-        node = blob1.addNode('under', 'nt:unstructured')
-        #print 'added', node.getUUID()
-        print 'saving'
-        root.save()
-
-    def doit_transactions(self):
-        # session 1
-        session1 = repository.login(credentials, workspaceName)
-        self.session1 = session1
-        checkRepositoryInit(session1)
-        workspace1 = session1.getWorkspace()
-        xaresource1 = session1.getXAResource()
-        xid1 = DummyXid()
-
-        om = workspace1.getObservationManager()
-        listener1 = Listener('1')
-        eventTypes = (NODE_ADDED | NODE_REMOVED |
-                      PROPERTY_ADDED | PROPERTY_REMOVED | PROPERTY_CHANGED)
-        isDeep = True
-        noLocal = False
-        om.addEventListener(listener1, eventTypes, '/',
-                            isDeep, None, None, noLocal)
-
-
-        # session 2
-        session2 = repository.login(credentials, workspaceName)
-        self.session2 = session2
-        workspace2 = session2.getWorkspace()
-        xaresource2 = session2.getXAResource()
-        xid2 = DummyXid()
-
-        om2 = workspace2.getObservationManager()
-        listener2 = Listener('2')
-        isDeep = True
-        noLocal = False
-        om2.addEventListener(listener2, eventTypes, '/',
-                             isDeep, None, None, noLocal)
-
-        # outside session
-        root = session1.getRootNode()
-        while root.hasNode('blob'):
-            node = root.getNode('blob')
-            node.remove()
-            #root.save()
-        blob = root.addNode('blob', 'nt:unstructured')
-        root.save()
-
-        # start transactions
-        xaresource1.start(xid1, XAResource.TMNOFLAGS)
-        xaresource2.start(xid2, XAResource.TMNOFLAGS)
-
-        root1 = session1.getRootNode()
-        root2 = session2.getRootNode()
-        blob1 = root1.getNode('blob')
-        blob2 = root2.getNode('blob')
-        blob1.setProperty('youpi', 'true', BOOLEAN)
-        blob2.setProperty('youpi', 'false', BOOLEAN)
-
-        # commit
-        print 'now save'
-        root1.save()
-        root2.save()
-
-        xaresource1.end(xid1, XAResource.TMSUCCESS)
-        xaresource2.end(xid2, XAResource.TMSUCCESS)
-        print 'prepare 1'
-    	xaresource1.prepare(xid1)
-        print 'commit 1'
-    	xaresource1.commit(xid1, False)
-        print 'prepare 2'
-        try:
-            xaresource2.prepare(xid2)
-        except XAException, e:
-            msgs = []
-            while e is not None:
-                msg = e.getMessage()
-                if msg is not None:
-                    if msg.endswith('.'):
-                        msg = msg[:-1]
-                    msgs.append(msg)
-                e = e.getCause()
-            print "cannot prepare 2,", ': '.join(msgs)
-            print 'rollback 2'
-            xaresource2.rollback(xid2)
-        else:
-            print 'commit 2'
-            xaresource2.commit(xid2, False)
-
-    ##################################################
 
     def doit_drafts(self):
         # session 1
