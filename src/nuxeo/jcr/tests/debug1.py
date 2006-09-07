@@ -21,9 +21,7 @@ Can be run through:
 
 import sys
 
-import java.io
-import javax.jcr
-
+from javax.jcr import SimpleCredentials
 from javax.transaction.xa import XAResource
 from javax.transaction.xa import XAException
 from javax.transaction.xa import Xid
@@ -48,22 +46,15 @@ class DummyXid(Xid):
 
 class Main:
 
-    def __init__(self, repository):
-        self.repository = repository
-        self.session = None
-
-    def main(self):
+    def main(self, repository):
+        credentials = SimpleCredentials('username', 'password')
+        session = repository.login(credentials, 'default')
         try:
-            self.doit()
+            self.doit(session)
         finally:
-            if self.session is not None:
-                self.session.logout()
+            session.logout()
 
-    def doit(self):
-        # session
-        credentials = javax.jcr.SimpleCredentials('username', 'password')
-        self.session = session = self.repository.login(credentials, 'default')
-
+    def doit(self, session):
         root = session.getRootNode()
 
         # Transaction setup
@@ -148,5 +139,5 @@ if __name__ == '__main__':
     repoconf = repopath+'.xml'
     repository = TransientRepository(repoconf, repopath)
 
-    Main(repository).main()
+    Main().main(repository)
     sys.stdout.flush()
