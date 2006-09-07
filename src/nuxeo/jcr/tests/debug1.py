@@ -25,11 +25,6 @@ import java.io
 import javax.jcr
 import javax.jcr.observation.EventListener
 from javax.jcr.PropertyType import BOOLEAN
-from javax.jcr.observation.Event import NODE_ADDED
-from javax.jcr.observation.Event import NODE_REMOVED
-from javax.jcr.observation.Event import PROPERTY_ADDED
-from javax.jcr.observation.Event import PROPERTY_REMOVED
-from javax.jcr.observation.Event import PROPERTY_CHANGED
 
 from javax.transaction.xa import XAResource
 from javax.transaction.xa import XAException
@@ -57,34 +52,6 @@ class DummyXid(Xid):
 credentials = javax.jcr.SimpleCredentials('username', 'password')
 
 
-class Listener(javax.jcr.observation.EventListener):
-    strings = {
-        NODE_ADDED: 'NODE_ADDED',
-        NODE_REMOVED: 'NODE_REMOVED',
-        PROPERTY_ADDED: 'PROPERTY_ADDED',
-        PROPERTY_REMOVED: 'PROPERTY_REMOVED',
-        PROPERTY_CHANGED: 'PROPERTY_CHANGED',
-        }
-    def __init__(self, name):
-        self.name = name
-
-    def eventString(self, type):
-        return self.strings.get(type, str(type))
-
-    def onEvent(self, events):
-        while events.hasNext():
-            event = events.nextEvent()
-            type = event.getType()
-            if type in (NODE_ADDED, NODE_REMOVED):
-                childid = event.getChildId().toString()
-            else:
-                childid = ''
-            print '%s: event %-16s path %s (%s)' % (
-                self.name,
-                self.eventString(event.getType()),
-                event.getPath(),
-                childid)
-
 class Main:
 
     def __init__(self, repository):
@@ -108,8 +75,6 @@ class Main:
 
         root = session.getRootNode()
 
-        if not root.isNodeType('mix:referenceable'):
-            root.addMixin('mix:referenceable')
         if not root.hasNode('toto'):
             node = root.addNode('toto', 'nt:unstructured')
             node.addMixin('mix:versionable')
@@ -119,24 +84,11 @@ class Main:
             node.setProperty('foo', 'hello bob')
             root.save()
             node.checkin()
-        node = root.getNode('toto')
-        if not node.hasProperty('bool'):
-            node.checkout()
-            node.setProperty('bool', 'true', BOOLEAN)
-            root.save()
-            node.checkin()
 
         # Transaction /events setup
         workspace = session.getWorkspace()
         xaresource = session.getXAResource()
         xid = DummyXid()
-        om = workspace.getObservationManager()
-        listener = Listener('listener')
-        eventTypes = (NODE_ADDED | NODE_REMOVED |
-                      PROPERTY_ADDED | PROPERTY_REMOVED | PROPERTY_CHANGED)
-        isDeep = True
-        noLocal = False
-        om.addEventListener(listener, eventTypes, '/', isDeep, None, None, noLocal)
 
         ################################################## T1
 
