@@ -15,8 +15,28 @@
 # $Id$
 """Testcase to debug JCR bug.
 
-Can be run through:
-  bin/jcrctl jython debug1.py <repopath>
+Can be run through following script:
+
+jython=$HOME/Java/jython-2.1
+jars=$HOME/Java/lib
+cp=$jars/commons-collections-3.1.jar
+cp=$cp:$jars/concurrent-1.3.4.jar
+cp=$cp:$jars/derby-10.1.1.0.jar
+cp=$cp:$jars/geronimo-spec-jta-1.0-M1.jar
+cp=$cp:$jars/jackrabbit-core-1.1-SNAPSHOT.jar
+cp=$cp:$jars/jackrabbit-jcr-commons-1.1-SNAPSHOT.jar
+cp=$cp:$jars/jcr-1.0.jar
+cp=$cp:$jars/junit-3.8.1.jar
+cp=$cp:$jars/log4j-1.2.8.jar
+cp=$cp:$jars/lucene-1.4.3.jar
+cp=$cp:$jars/slf4j-log4j12-1.0.jar
+cp=$cp:$jars/xercesImpl-2.6.2.jar
+cp=$cp:$jars/xmlParserAPIs-2.0.2.jar
+java -Dpython.home=$jython \
+    -classpath $jython/jython.jar:$cp:$CLASSPATH \
+    org.python.util.jython "$@"
+
+Pass as an argument the repository path.
 """
 
 import sys
@@ -44,100 +64,100 @@ class DummyXid(Xid):
         return []
 
 
-class Main:
+class Dummy:
+    # Class needed because the bug is memory-layout dependent.
+    def foo(self): pass
 
-    def main(self, repository):
-        credentials = SimpleCredentials('username', 'password')
-        session = repository.login(credentials, 'default')
-        try:
-            self.doit(session)
-        finally:
-            session.logout()
 
-    def doit(self, session):
-        root = session.getRootNode()
+def doit(session):
+    root = session.getRootNode()
 
-        # Transaction setup
-        workspace = session.getWorkspace()
-        xaresource = session.getXAResource()
-        xid = DummyXid()
+    # Transaction setup
+    workspace = session.getWorkspace()
+    xaresource = session.getXAResource()
+    xid = DummyXid()
 
-        ################################################## T1
+    ################################################## T1
 
-        print 'start 1'
-        xaresource.start(xid, XAResource.TMNOFLAGS)
+    print 'start 1'
+    xaresource.start(xid, XAResource.TMNOFLAGS)
 
-        # Create node, subnode, set props
-        node = root.addNode('blob', 'nt:unstructured')
-        node.addMixin('mix:versionable')
-        print 'node', node.getUUID()
-        node.addNode('sub', 'nt:unstructured')
-        root.save()
-        node.setProperty('youpi', 'yo')
-        root.save()
+    # Create node, subnode, set props
+    node = root.addNode('blob', 'nt:unstructured')
+    node.addMixin('mix:versionable')
+    print 'node', node.getUUID()
+    node.addNode('sub', 'nt:unstructured')
+    root.save()
+    node.setProperty('youpi', 'yo')
+    root.save()
 
-        print 'commit 1'
-        xaresource.end(xid, XAResource.TMSUCCESS)
-    	xaresource.commit(xid, True)
+    print 'commit 1'
+    xaresource.end(xid, XAResource.TMSUCCESS)
+    xaresource.commit(xid, True)
 
-        ################################################## T2
+    ################################################## T2
 
-        print 'start 2'
-        xaresource.start(xid, XAResource.TMNOFLAGS)
+    print 'start 2'
+    xaresource.start(xid, XAResource.TMNOFLAGS)
 
-        # checkin + checkout
-        node.checkin()
-        node.checkout()
-        root.save()
+    # checkin + checkout
+    node.checkin()
+    node.checkout()
+    root.save()
 
-        print 'commit 2'
-        xaresource.end(xid, XAResource.TMSUCCESS)
-        xaresource.commit(xid, True)
+    print 'commit 2'
+    xaresource.end(xid, XAResource.TMSUCCESS)
+    xaresource.commit(xid, True)
 
-        ################################################## T3
+    ################################################## T3
 
-        print 'start 3'
-        xaresource.start(xid, XAResource.TMNOFLAGS)
+    print 'start 3'
+    xaresource.start(xid, XAResource.TMNOFLAGS)
 
-        # restore
-        node.restore(node.getBaseVersion(), True)
-        node.checkout()
-        # modify subnode
-        node.getNode('sub').setProperty('foo', '3') # needed for crash
-        root.save()
+    # restore
+    node.restore(node.getBaseVersion(), True)
+    node.checkout()
+    # modify subnode
+    node.getNode('sub').setProperty('foo', '3') # needed for crash
+    root.save()
 
-        print 'commit 3'
-        xaresource.end(xid, XAResource.TMSUCCESS)
-        xaresource.commit(xid, True)
+    print 'commit 3'
+    xaresource.end(xid, XAResource.TMSUCCESS)
+    xaresource.commit(xid, True)
 
-        ################################################## T4
+    ################################################## T4
 
-        print 'start 4'
-        xaresource.start(xid, XAResource.TMNOFLAGS)
+    print 'start 4'
+    xaresource.start(xid, XAResource.TMNOFLAGS)
 
-        # checkin + checkout
-        node.checkin()
-        node.checkout()
-        # modify node, subnode
-        node.setProperty('youpi', 'ho') # needed for crash
-        node.getNode('sub').setProperty('foo', '4') # needed for crash
-        root.save()
+    # checkin + checkout
+    node.checkin()
+    node.checkout()
+    # modify node, subnode
+    node.setProperty('youpi', 'ho') # needed for crash
+    node.getNode('sub').setProperty('foo', '4') # needed for crash
+    root.save()
 
-        print 'commit 4'
-        xaresource.end(xid, XAResource.TMSUCCESS)
-        xaresource.commit(xid, True)
+    print 'commit 4'
+    xaresource.end(xid, XAResource.TMSUCCESS)
+    xaresource.commit(xid, True)
 
-        print 'done'
+    print 'done'
 
 
 if __name__ == '__main__':
     if len(sys.argv) != 2:
         print >>sys.stderr, "Usage: debug1.py <repopath>"
         sys.exit(1)
-
     repopath = sys.argv[1]
     repoconf = repopath+'.xml'
-    repository = TransientRepository(repoconf, repopath)
 
-    Main().main(repository)
+    repository = TransientRepository(repoconf, repopath)
+    credentials = SimpleCredentials('username', 'password')
+    session = repository.login(credentials, 'default')
+    try:
+        doit(session)
+    finally:
+        session.logout()
+
     sys.stdout.flush()
