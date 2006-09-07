@@ -23,8 +23,6 @@ import sys
 
 import java.io
 import javax.jcr
-import javax.jcr.observation.EventListener
-from javax.jcr.PropertyType import BOOLEAN
 
 from javax.transaction.xa import XAResource
 from javax.transaction.xa import XAException
@@ -48,44 +46,27 @@ class DummyXid(Xid):
         return []
 
 
-
-credentials = javax.jcr.SimpleCredentials('username', 'password')
-
-
 class Main:
 
     def __init__(self, repository):
         self.repository = repository
-        self.session1 = None
-        self.session2 = None
+        self.session = None
 
     def main(self):
         try:
-            self.doit_drafts()
+            self.doit()
         finally:
-            if self.session1 is not None:
-                self.session1.logout()
-            if self.session2 is not None:
-                self.session2.logout()
+            if self.session is not None:
+                self.session.logout()
 
-    def doit_drafts(self):
-        # session 1
-        session = repository.login(credentials, 'default')
-        self.session1 = session # for cleanup if exception
+    def doit(self):
+        # session
+        credentials = javax.jcr.SimpleCredentials('username', 'password')
+        self.session = session = self.repository.login(credentials, 'default')
 
         root = session.getRootNode()
 
-        if not root.hasNode('toto'):
-            node = root.addNode('toto', 'nt:unstructured')
-            node.addMixin('mix:versionable')
-            root.save()
-            node.checkin()
-            node.checkout()
-            node.setProperty('foo', 'hello bob')
-            root.save()
-            node.checkin()
-
-        # Transaction /events setup
+        # Transaction setup
         workspace = session.getWorkspace()
         xaresource = session.getXAResource()
         xid = DummyXid()
@@ -95,26 +76,18 @@ class Main:
         print 'start 1'
         xaresource.start(xid, XAResource.TMNOFLAGS)
 
-        while root.hasNode('blob'):
-            node = root.getNode('blob')
-            node.remove()
-
-        # Create node, set prop
+        # Create node, subnode, set props
         node = root.addNode('blob', 'nt:unstructured')
         node.addMixin('mix:versionable')
+        print 'node', node.getUUID()
         node.addNode('sub', 'nt:unstructured')
         root.save()
-        node.setProperty('youpi', 'oui')
-        node.getNode('sub').setProperty('foo', '1')
+        node.setProperty('youpi', 'yo')
         root.save()
 
-        # prepare/commit
-        print 'end 1'
-        xaresource.end(xid, XAResource.TMSUCCESS)
-        print 'prepare 1'
-    	xaresource.prepare(xid)
         print 'commit 1'
-    	xaresource.commit(xid, False)
+        xaresource.end(xid, XAResource.TMSUCCESS)
+    	xaresource.commit(xid, True)
 
         ################################################## T2
 
@@ -125,17 +98,10 @@ class Main:
         node.checkin()
         node.checkout()
         root.save()
-        node.setProperty('youpi', 'non')
-        node.getNode('sub').setProperty('foo', '2')
-        root.save()
 
-        # prepare/commit
-        print 'end 2'
-        xaresource.end(xid, XAResource.TMSUCCESS)
-        print 'prepare 2'
-        xaresource.prepare(xid)
         print 'commit 2'
-        xaresource.commit(xid, False)
+        xaresource.end(xid, XAResource.TMSUCCESS)
+        xaresource.commit(xid, True)
 
         ################################################## T3
 
@@ -145,18 +111,13 @@ class Main:
         # restore
         node.restore(node.getBaseVersion(), True)
         node.checkout()
-        # modify doc (secu) et wf status
-        node.setProperty('youpi', 'ptet')
+        # modify subnode
         node.getNode('sub').setProperty('foo', '3') # needed for crash
         root.save()
 
-        # prepare/commit
-        print 'end 3'
-        xaresource.end(xid, XAResource.TMSUCCESS)
-        print 'prepare 3'
-        xaresource.prepare(xid)
         print 'commit 3'
-        xaresource.commit(xid, False)
+        xaresource.end(xid, XAResource.TMSUCCESS)
+        xaresource.commit(xid, True)
 
         ################################################## T4
 
@@ -166,25 +127,21 @@ class Main:
         # checkin + checkout
         node.checkin()
         node.checkout()
-        # modify doc (secu) et wf status
-        node.setProperty('youpi', 'n/a') # needed for crash
+        # modify node, subnode
+        node.setProperty('youpi', 'ho') # needed for crash
         node.getNode('sub').setProperty('foo', '4') # needed for crash
         root.save()
 
-        # prepare/commit
-        print 'end 4'
-        xaresource.end(xid, XAResource.TMSUCCESS)
-        print 'prepare 4'
-        xaresource.prepare(xid)
         print 'commit 4'
-        xaresource.commit(xid, False)
+        xaresource.end(xid, XAResource.TMSUCCESS)
+        xaresource.commit(xid, True)
 
         print 'done'
 
 
 if __name__ == '__main__':
     if len(sys.argv) != 2:
-        print >>sys.stderr, "Usage: debugjcr.py <repopath>"
+        print >>sys.stderr, "Usage: debug1.py <repopath>"
         sys.exit(1)
 
     repopath = sys.argv[1]
