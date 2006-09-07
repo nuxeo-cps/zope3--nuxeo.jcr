@@ -44,56 +44,6 @@ except NameError:
     False = 0
 
 
-NAMESPACES = [
-    ('ecm', 'http://nuxeo.org/ecm/jcr/names'),
-    ('ecmnt', 'http://nuxeo.org/ecm/jcr/types'),
-    ('ecmst', 'http://nuxeo.org/ecm/jcr/schemas'),
-    ('ecmdt', 'http://nuxeo.org/ecm/jcr/docs'),
-    ('dc', 'http://purl.org/dc/elements/1.1/'),
-    ]
-
-NODETYPEDEFS = """
-<ecm='http://nuxeo.org/ecm/jcr/names'>
-<ecmnt='http://nuxeo.org/ecm/jcr/types'>
-<ecmst='http://nuxeo.org/ecm/jcr/schemas'>
-<ecmdt='http://nuxeo.org/ecm/jcr/docs'>
-<dc='http://purl.org/dc/elements/1.1/'>
-
-// schema base
-[ecmnt:schema]
-
-// document
-[ecmnt:document]
-
-// non-orderable  folder
-[ecmnt:folder] > ecmnt:document
-  + * (ecmnt:document)
-
-// dublin core
-[ecmst:dublincore] > ecmnt:schema
-  - dc:title
-  - dc:description (String)
-
-////////// example
-
-// a complex type for firstname+lastname
-[ecmst:name] > ecmnt:schema
-  - firstname (String)
-  - lastname (String)
-
-// the schema for the tripreport part
-[ecmst:tripreport] > ecmnt:schema
-  - duedate (Date)
-  - cities (String) multiple
-  + username (ecmst:name)
-  + childrennames (ecmst:name) multiple
-
-// a full document type
-[ecmdt:tripreport] > ecmnt:document, ecmst:tripreport, ecmst:dublincore
-
-"""
-
-
 class DummyXid(Xid):
     def getBranchQualifier(self):
         return []
@@ -105,54 +55,6 @@ class DummyXid(Xid):
 
 
 credentials = javax.jcr.SimpleCredentials('username', 'password')
-
-def output(s):
-    print s,
-
-
-def dumpNode(node, spaces):
-    name = node.getName()
-    if name == 'jcr:nodeTypes':
-        return
-    path = node.getPath()
-    t = node.getProperty('jcr:primaryType').getString()
-    output(spaces + "%s (%s)\n" % (path, t))
-    spaces += "  "
-    for p in node.getProperties():
-        name = p.getName()
-        if name == 'jcr:primaryType':
-           continue
-        try:
-            s = p.getString()
-        except javax.jcr.ValueFormatException:
-            s = str([v.getString() for v in p.getValues()])
-        output(spaces + "prop %s %s\n" % (name, s))
-    for n in node.getNodes():
-        dumpNode(n, spaces)
-
-
-def checkRepositoryInit(session):
-    """Check that things are ok in the repository, after creation.
-
-    """
-    root = session.getRootNode()
-    if not root.isNodeType('mix:referenceable'):
-        root.addMixin('mix:referenceable')
-    if not root.hasNode('toto'):
-        node = root.addNode('toto', 'nt:unstructured')
-        node.addMixin('mix:versionable')
-        root.save()
-        node.checkin()
-        node.checkout()
-        node.setProperty('foo', 'hello bob')
-        root.save()
-        node.checkin()
-    node = root.getNode('toto')
-    if not node.hasProperty('bool'):
-        node.checkout()
-        node.setProperty('bool', 'true', BOOLEAN)
-        root.save()
-        node.checkin()
 
 
 class Listener(javax.jcr.observation.EventListener):
@@ -185,9 +87,8 @@ class Listener(javax.jcr.observation.EventListener):
 
 class Main:
 
-    def __init__(self, repository, workspaceName):
+    def __init__(self, repository):
         self.repository = repository
-        self.workspaceName = workspaceName
         self.session1 = None
         self.session2 = None
 
@@ -202,7 +103,7 @@ class Main:
 
     def doit_drafts(self):
         # session 1
-        session = repository.login(credentials, workspaceName)
+        session = repository.login(credentials, 'default')
         self.session1 = session # for cleanup if exception
 
         root = session.getRootNode()
@@ -336,8 +237,7 @@ if __name__ == '__main__':
 
     repopath = sys.argv[1]
     repoconf = repopath+'.xml'
-    workspaceName = 'default'
     repository = TransientRepository(repoconf, repopath)
 
-    Main(repository, workspaceName).main()
+    Main(repository).main()
     sys.stdout.flush()
