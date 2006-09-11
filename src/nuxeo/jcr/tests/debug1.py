@@ -40,6 +40,7 @@ Pass as an argument the repository path.
 """
 
 import sys
+import java.lang.String
 
 from javax.jcr import SimpleCredentials
 from javax.transaction.xa import XAResource
@@ -55,13 +56,15 @@ except NameError:
     False = 0
 
 
-class DummyXid(Xid):
+class XidImpl(Xid):
+    def __init__(self, globalTxId):
+        self.globalTxId = java.lang.String(str(globalTxId)).getBytes()
     def getBranchQualifier(self):
         return []
     def getFormatId(self):
         return 0
     def getGlobalTransactionId(self):
-        return []
+        return self.globalTxId
 
 
 class Dummy:
@@ -79,7 +82,7 @@ def doit(session):
     ################################################## T1
 
     print 'start 1'
-    xid1 = DummyXid()
+    xid1 = XidImpl(1)
     xaresource.start(xid1, XAResource.TMNOFLAGS)
 
     # Create node, subnode, set props
@@ -98,7 +101,7 @@ def doit(session):
     ################################################## T2
 
     print 'start 2'
-    xid2 = DummyXid()
+    xid2 = XidImpl(2)
     xaresource.start(xid2, XAResource.TMNOFLAGS)
 
     # checkin + checkout
@@ -113,7 +116,7 @@ def doit(session):
     ################################################## T3
 
     print 'start 3'
-    xid3 = DummyXid()
+    xid3 = XidImpl(3)
     xaresource.start(xid3, XAResource.TMNOFLAGS)
 
     # restore
@@ -126,24 +129,6 @@ def doit(session):
     print 'commit 3'
     xaresource.end(xid3, XAResource.TMSUCCESS)
     xaresource.commit(xid3, True)
-
-    ################################################## T4
-
-    print 'start 4'
-    xid4 = DummyXid()
-    xaresource.start(xid4, XAResource.TMNOFLAGS)
-
-    # checkin + checkout
-    node.checkin()
-    node.checkout()
-    # modify node, subnode
-    node.setProperty('youpi', 'ho') # needed for crash
-    node.getNode('sub').setProperty('foo', '4') # needed for crash
-    root.save()
-
-    print 'commit 4'
-    xaresource.end(xid4, XAResource.TMSUCCESS)
-    xaresource.commit(xid4, True)
 
     print 'done'
 
