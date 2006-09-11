@@ -67,11 +67,6 @@ class XidImpl(Xid):
         return self.globalTxId
 
 
-class Dummy:
-    # Class needed because the bug is memory-layout dependent.
-    def foo(self): pass
-
-
 def doit(session):
     root = session.getRootNode()
 
@@ -96,7 +91,8 @@ def doit(session):
 
     print 'commit 1'
     xaresource.end(xid1, XAResource.TMSUCCESS)
-    xaresource.commit(xid1, True)
+    xaresource.prepare(xid1)
+    xaresource.commit(xid1, False)
 
     ################################################## T2
 
@@ -111,7 +107,8 @@ def doit(session):
 
     print 'commit 2'
     xaresource.end(xid2, XAResource.TMSUCCESS)
-    xaresource.commit(xid2, True)
+    xaresource.prepare(xid2)
+    xaresource.commit(xid2, False)
 
     ################################################## T3
 
@@ -128,7 +125,8 @@ def doit(session):
 
     print 'commit 3'
     xaresource.end(xid3, XAResource.TMSUCCESS)
-    xaresource.commit(xid3, True)
+    xaresource.prepare(xid3)
+    xaresource.commit(xid3, False)
 
     print 'done'
 
