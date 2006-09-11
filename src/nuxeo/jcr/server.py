@@ -152,13 +152,15 @@ class Listener(SynchronousEventListener):
                 event.getPath())
 
 
-class DummyXid(Xid):
+class XidImpl(Xid):
+    def __init__(self, globalTxId):
+        self.globalTxId = java.lang.String(str(globalTxId)).getBytes()
     def getBranchQualifier(self):
         return []
     def getFormatId(self):
         return 0
     def getGlobalTransactionId(self):
-        return []
+        return self.globalTxId
 
 
 class Processor:
@@ -168,6 +170,7 @@ class Processor:
     session = None
     root = None
     prepared = False
+    xidcounter = 0
 
     def __init__(self, io, repository):
         self.io = io
@@ -203,12 +206,8 @@ class Processor:
 
     def login(self, workspaceName):
         session = self.repository.login(CREDENTIALS, workspaceName)
-        xaresource = session.getXAResource()
-        xid = DummyXid()
         self.session = session
-        self.xaresource = xaresource
-        self.xid = xid
-
+        self.xaresource = session.getXAResource()
         self.new()
 
         om = self.session.getWorkspace().getObservationManager()
@@ -222,6 +221,8 @@ class Processor:
 
 
     def new(self, end=None):
+        self.xidcounter += 1
+        self.xid = XidImpl(self.xidcounter)
         self.xaresource.start(self.xid, XAResource.TMNOFLAGS)
         self.prepared = False
 
