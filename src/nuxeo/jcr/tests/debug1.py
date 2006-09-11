@@ -75,12 +75,12 @@ def doit(session):
     # Transaction setup
     workspace = session.getWorkspace()
     xaresource = session.getXAResource()
-    xid = DummyXid()
 
     ################################################## T1
 
     print 'start 1'
-    xaresource.start(xid, XAResource.TMNOFLAGS)
+    xid1 = DummyXid()
+    xaresource.start(xid1, XAResource.TMNOFLAGS)
 
     # Create node, subnode, set props
     node = root.addNode('blob', 'nt:unstructured')
@@ -92,13 +92,14 @@ def doit(session):
     root.save()
 
     print 'commit 1'
-    xaresource.end(xid, XAResource.TMSUCCESS)
-    xaresource.commit(xid, True)
+    xaresource.end(xid1, XAResource.TMSUCCESS)
+    xaresource.commit(xid1, True)
 
     ################################################## T2
 
     print 'start 2'
-    xaresource.start(xid, XAResource.TMNOFLAGS)
+    xid2 = DummyXid()
+    xaresource.start(xid2, XAResource.TMNOFLAGS)
 
     # checkin + checkout
     node.checkin()
@@ -106,13 +107,14 @@ def doit(session):
     root.save()
 
     print 'commit 2'
-    xaresource.end(xid, XAResource.TMSUCCESS)
-    xaresource.commit(xid, True)
+    xaresource.end(xid2, XAResource.TMSUCCESS)
+    xaresource.commit(xid2, True)
 
     ################################################## T3
 
     print 'start 3'
-    xaresource.start(xid, XAResource.TMNOFLAGS)
+    xid3 = DummyXid()
+    xaresource.start(xid3, XAResource.TMNOFLAGS)
 
     # restore
     node.restore(node.getBaseVersion(), True)
@@ -122,13 +124,14 @@ def doit(session):
     root.save()
 
     print 'commit 3'
-    xaresource.end(xid, XAResource.TMSUCCESS)
-    xaresource.commit(xid, True)
+    xaresource.end(xid3, XAResource.TMSUCCESS)
+    xaresource.commit(xid3, True)
 
     ################################################## T4
 
     print 'start 4'
-    xaresource.start(xid, XAResource.TMNOFLAGS)
+    xid4 = DummyXid()
+    xaresource.start(xid4, XAResource.TMNOFLAGS)
 
     # checkin + checkout
     node.checkin()
@@ -139,8 +142,8 @@ def doit(session):
     root.save()
 
     print 'commit 4'
-    xaresource.end(xid, XAResource.TMSUCCESS)
-    xaresource.commit(xid, True)
+    xaresource.end(xid4, XAResource.TMSUCCESS)
+    xaresource.commit(xid4, True)
 
     print 'done'
 
