@@ -3,6 +3,7 @@
 # $Id$
 
 JARS=$HOME/Java/lib # default
+export JAVA_OPTIONS=-Xmx256m
 
 HERE=`dirname $0`
 INSTANCE=$HERE
